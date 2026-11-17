@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NYC 311 Rat Sightings Interactive Dashboard</title>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #0b1120;
+      --card-bg: #1e293b;
+      --border-color: #334155;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      background: #131d31;
+      border-bottom: 1px solid var(--border-color);
+      padding: 18px 32px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .header-title h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .header-sub span {
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    /* Borough Filter */
+    .filter-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .filter-wrap label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .filter-select {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+    }
+    .filter-select:focus {
+      border-color: var(--accent);
+    }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      background: #0f172a;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 32px;
+      gap: 12px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s ease;
+    }
+    .tab-btn:hover {
+      color: #fff;
+    }
+    .tab-btn.active {
+      color: #818cf8;
+      border-bottom: 3px solid #818cf8;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 24px 32px;
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Stat Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .stat-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+    .stat-desc {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    /* Charts Grid */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+    .card-header {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      color: #f1f5f9;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .chart-box {
+      position: relative;
+      height: 320px;
+      width: 100%;
+    }
+
+    /* Seasonal Heatmap Table */
+    .table-responsive {
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    .heatmap-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: center;
+    }
+    .heatmap-table th, .heatmap-table td {
+      padding: 10px 8px;
+      border: 1px solid #0f172a;
+    }
+    .heatmap-table th {
+      background: #090e17;
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+    .month-col {
+      font-weight: 700;
+      color: #cbd5e1;
+      text-align: left;
+      padding-left: 14px;
+      background: #090e17;
+    }
+
+    /* Map Controls */
+    .map-toolbar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: #f8fafc;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #334155; }
+    .btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    #map-container {
+      height: 600px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Legend */
+    .legend-box {
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid var(--border-color);
+      padding: 12px 16px;
+      border-radius: 8px;
+      color: #f8fafc;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .legend-gradient {
+      height: 10px;
+      width: 150px;
+      border-radius: 4px;
+      background: linear-gradient(to right, #38bdf8, #818cf8, #f59e0b, #ef4444);
+      margin: 5px 0;
+    }
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header with Student & Course Meta -->
+  <header>
+    <div class="header-title">
+      <h1>🐀 NYC 311 Rat Sightings Decision Dashboard</h1>
+      <div class="header-sub">
+        <span>Justin Loretz</span> &bull; 
+        <span>Completed for BQUA 2812, Fall 2026</span>
+      </div>
+    </div>
+
+    <!-- Borough Filter -->
+    <div class="filter-wrap">
+      <label for="borough-select">Borough Filter:</label>
+      <select id="borough-select" class="filter-select">
+        <option value="ALL">All Boroughs (Citywide)</option>
+        <option value="BROOKLYN">Brooklyn</option>
+        <option value="MANHATTAN">Manhattan</option>
+        <option value="BRONX">Bronx</option>
+        <option value="QUEENS">Queens</option>
+        <option value="STATEN ISLAND">Staten Island</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- 3 Nav Tabs -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" onclick="activateTab('tab-summary', this)">Tab 1: Summary</button>
+    <button class="tab-btn" onclick="activateTab('tab-trends', this)">Tab 2: Monthly Trends & Forecast</button>
+    <button class="tab-btn" onclick="activateTab('tab-map', this)">Tab 3: Interactive Map</button>
+  </nav>
+
+  <!-- Main Container -->
+  <main>
+
+    <!-- TAB 1: SUMMARY -->
+    <div id="tab-summary" class="tab-pane active">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-title">Total Sightings</div>
+          <div class="stat-value" id="val-total">-</div>
+          <div class="stat-desc">311 complaint records logged</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">Most Affected Borough</div>
+          <div class="stat-value" id="val-affected">-</div>
+          <div class="stat-desc" id="val-affected-desc">Highest volume cluster</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">Percentage of Cases Closed</div>
+          <div class="stat-value" id="val-closed">-</div>
+          <div class="stat-desc">Resolved by agency inspectors</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-title">Average Days to Resolve</div>
+          <div class="stat-value" id="val-resolution">-</div>
+          <div class="stat-desc">From created date to closed date</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="card">
+          <div class="card-header">Total Sightings Compared Across Boroughs</div>
+          <div class="chart-box">
+            <canvas id="bar-borough-chart"></canvas>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">Incident Breakdown by Location Type</div>
+          <div class="chart-box">
+            <canvas id="donut-location-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: MONTHLY TRENDS -->
+    <div id="tab-trends" class="tab-pane">
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header">
+          <span>Monthly Sightings & Linear Regression Forecast (2010 – 2018)</span>
+          <span id="trend-stats-badge" style="font-size: 13px; font-weight: 600; color: #818cf8;">-</span>
+        </div>
+        <div class="chart-box" style="height: 380px;">
+          <canvas id="line-trend-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Seasonal Heatmap Table (Months vs. Years)</div>
+        <div class="table-responsive">
+          <table class="heatmap-table" id="heatmap-table"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: INTERACTIVE MAP -->
+    <div id="tab-map" class="tab-pane">
+      <div class="map-toolbar">
+        <button class="btn active" id="btn-zip-toggle" onclick="toggleLayer('zip')">Zip Code Hotspot Circles</button>
+        <button class="btn" id="btn-pins-toggle" onclick="toggleLayer('pins')">Individual Sighting Pins</button>
+        <span style="font-size: 12px; color: var(--text-secondary); margin-left: auto;">
+          Basemap: <strong>Esri Geographic (NatGeo)</strong>
+        </span>
+      </div>
+      <div id="map-container"></div>
+    </div>
+
+  </main>
+
+  <script>
+    // Embedded Data Bundle Computed from Rat_Sightings.xlsx
+    const APP_DATA = {"stats": {"ALL": {"total": 114503, "mostAffected": "Brooklyn", "pctClosed": 72.6, "avgResDays": 14.6, "boroughCounts": [39487, 29837, 23109, 16645, 5425], "locationBreakdown": [{"label": "3+ Family Apt. Building", "count": 46705}, {"label": "1-2 Family Dwelling", "count": 21893}, {"label": "Other (Explain Below)", "count": 16837}, {"label": "3+ Family Mixed Use Building", "count": 8816}, {"label": "Commercial Building", "count": 5740}, {"label": "Other Types", "count": 14512}], "monthlyCounts": [528, 425, 831, 912, 1066, 1161, 1289, 1321, 1040, 875, 651, 435, 459, 563, 825, 977, 1126, 1250, 1041, 1131, 1084, 835, 595, 568, 669, 589, 791, 798, 1142, 1076, 1177, 1269, 1024, 899, 568, 640, 729, 640, 838, 1001, 1159, 1137, 1217, 1105, 981, 855, 569, 508, 521, 541, 782, 990, 1236, 1411, 1397, 1415, 1304, 1417, 856, 747, 728, 608, 1002, 1247, 1497, 1550, 1893, 1550, 1613, 1501, 1089, 994, 944, 1044, 1261, 1284, 1813, 1840, 1769, 1854, 1775, 1524, 1121, 1001, 1158, 1494, 1406, 1688, 1739, 1882, 2199, 2011, 1711, 1756, 1169, 939, 965, 1058, 1087, 1394, 1889, 1470], "trendLine": [702.1, 710.4, 718.8, 727.1, 735.4, 743.7, 752.1, 760.4, 768.7, 777.0, 785.4, 793.7, 802.0, 810.4, 818.7, 827.0, 835.3, 843.7, 852.0, 860.3, 868.6, 877.0, 885.3, 893.6, 901.9, 910.3, 918.6, 926.9, 935.2, 943.6, 951.9, 960.2, 968.5, 976.9, 985.2, 993.5, 1001.9, 1010.2, 1018.5, 1026.8, 1035.2, 1043.5, 1051.8, 1060.1, 1068.5, 1076.8, 1085.1, 1093.4, 1101.8, 1110.1, 1118.4, 1126.7, 1135.1, 1143.4, 1151.7, 1160.0, 1168.4, 1176.7, 1185.0, 1193.3, 1201.7, 1210.0, 1218.3, 1226.7, 1235.0, 1243.3, 1251.6, 1260.0, 1268.3, 1276.6, 1284.9, 1293.3, 1301.6, 1309.9, 1318.2, 1326.6, 1334.9, 1343.2, 1351.5, 1359.9, 1368.2, 1376.5, 1384.8, 1393.2, 1401.5, 1409.8, 1418.2, 1426.5, 1434.8, 1443.1, 1451.5, 1459.8, 1468.1, 1476.4, 1484.8, 1493.1, 1501.4, 1509.7, 1518.1, 1526.4, 1534.7, 1543.0, 1551.4, 1559.7, 1568.0, 1576.3, 1584.7, 1593.0, 1601.3, 1609.7, 1618.0, 1626.3, 1634.6, 1643.0], "slope": 8.33, "intercept": 702.11, "trendDirection": "Upward (+)", "heatmap": {"Jan": [528, 459, 669, 729, 521, 728, 944, 1158, 965], "Feb": [425, 563, 589, 640, 541, 608, 1044, 1494, 1058], "Mar": [831, 825, 791, 838, 782, 1002, 1261, 1406, 1087], "Apr": [912, 977, 798, 1001, 990, 1247, 1284, 1688, 1394], "May": [1066, 1126, 1142, 1159, 1236, 1497, 1813, 1739, 1889], "Jun": [1161, 1250, 1076, 1137, 1411, 1550, 1840, 1882, 1470], "Jul": [1289, 1041, 1177, 1217, 1397, 1893, 1769, 2199, 0], "Aug": [1321, 1131, 1269, 1105, 1415, 1550, 1854, 2011, 0], "Sep": [1040, 1084, 1024, 981, 1304, 1613, 1775, 1711, 0], "Oct": [875, 835, 899, 855, 1417, 1501, 1524, 1756, 0], "Nov": [651, 595, 568, 569, 856, 1089, 1121, 1169, 0], "Dec": [435, 568, 640, 508, 747, 994, 1001, 939, 0]}}, "BROOKLYN": {"total": 39487, "mostAffected": "Brooklyn", "pctClosed": 76.0, "avgResDays": 15.3, "boroughCounts": [39487, 0, 0, 0, 0], "locationBreakdown": [{"label": "3+ Family Apt. Building", "count": 15666}, {"label": "1-2 Family Dwelling", "count": 8048}, {"label": "Other (Explain Below)", "count": 5848}, {"label": "3+ Family Mixed Use Building", "count": 2610}, {"label": "Commercial Building", "count": 1839}, {"label": "Other Types", "count": 5476}], "monthlyCounts": [167, 129, 279, 289, 370, 371, 389, 422, 365, 267, 211, 140, 162, 186, 298, 349, 433, 465, 364, 386, 362, 299, 192, 175, 225, 187, 268, 269, 381, 366, 425, 441, 349, 298, 181, 210, 240, 190, 256, 297, 334, 370, 381, 356, 300, 270, 165, 141, 147, 173, 193, 305, 386, 442, 504, 475, 427, 440, 247, 229, 226, 202, 321, 436, 542, 630, 609, 539, 539, 504, 369, 346, 292, 298, 399, 457, 678, 681, 628, 675, 591, 544, 401, 335, 383, 492, 490, 703, 718, 770, 853, 773, 641, 666, 446, 318, 359, 390, 412, 580, 719, 594], "trendLine": [210.3, 213.8, 217.3, 220.8, 224.3, 227.8, 231.3, 234.8, 238.3, 241.8, 245.3, 248.8, 252.3, 255.8, 259.3, 262.8, 266.3, 269.8, 273.3, 276.8, 280.3, 283.8, 287.3, 290.8, 294.3, 297.8, 301.3, 304.8, 308.3, 311.8, 315.3, 318.8, 322.3, 325.8, 329.3, 332.8, 336.3, 339.8, 343.4, 346.9, 350.4, 353.9, 357.4, 360.9, 364.4, 367.9, 371.4, 374.9, 378.4, 381.9, 385.4, 388.9, 392.4, 395.9, 399.4, 402.9, 406.4, 409.9, 413.4, 416.9, 420.4, 423.9, 427.4, 430.9, 434.4, 437.9, 441.4, 444.9, 448.4, 451.9, 455.4, 458.9, 462.4, 465.9, 469.4, 472.9, 476.4, 479.9, 483.4, 486.9, 490.4, 493.9, 497.4, 500.9, 504.4, 507.9, 511.5, 515.0, 518.5, 522.0, 525.5, 529.0, 532.5, 536.0, 539.5, 543.0, 546.5, 550.0, 553.5, 557.0, 560.5, 564.0, 567.5, 571.0, 574.5, 578.0, 581.5, 585.0, 588.5, 592.0, 595.5, 599.0, 602.5, 606.0], "slope": 3.5, "intercept": 210.27, "trendDirection": "Upward (+)", "heatmap": {"Jan": [167, 162, 225, 240, 147, 226, 292, 383, 359], "Feb": [129, 186, 187, 190, 173, 202, 298, 492, 390], "Mar": [279, 298, 268, 256, 193, 321, 399, 490, 412], "Apr": [289, 349, 269, 297, 305, 436, 457, 703, 580], "May": [370, 433, 381, 334, 386, 542, 678, 718, 719], "Jun": [371, 465, 366, 370, 442, 630, 681, 770, 594], "Jul": [389, 364, 425, 381, 504, 609, 628, 853, 0], "Aug": [422, 386, 441, 356, 475, 539, 675, 773, 0], "Sep": [365, 362, 349, 300, 427, 539, 591, 641, 0], "Oct": [267, 299, 298, 270, 440, 504, 544, 666, 0], "Nov": [211, 192, 181, 165, 247, 369, 401, 446, 0], "Dec": [140, 175, 210, 141, 229, 346, 335, 318, 0]}}, "MANHATTAN": {"total": 29837, "mostAffected": "Manhattan", "pctClosed": 65.9, "avgResDays": 15.2, "boroughCounts": [0, 29837, 0, 0, 0], "locationBreakdown": [{"label": "3+ Family Apt. Building", "count": 14317}, {"label": "Other (Explain Below)", "count": 5776}, {"label": "3+ Family Mixed Use Building", "count": 3361}, {"label": "Commercial Building", "count": 1701}, {"label": "Construction Site", "count": 1071}, {"label": "Other Types", "count": 3611}], "monthlyCounts": [137, 120, 260, 242, 279, 300, 362, 356, 267, 244, 205, 95, 126, 140, 193, 258, 255, 271, 213, 258, 273, 172, 158, 144, 212, 162, 202, 216, 303, 272, 281, 312, 253, 264, 191, 189, 209, 193, 239, 281, 313, 332, 334, 273, 270, 242, 181, 151, 157, 145, 244, 288, 346, 386, 346, 332, 349, 456, 263, 229, 211, 153, 267, 344, 434, 333, 446, 398, 466, 451, 329, 291, 297, 344, 357, 380, 471, 462, 441, 422, 493, 376, 306, 261, 306, 361, 342, 363, 417, 376, 492, 481, 402, 462, 287, 218, 230, 253, 268, 343, 426, 333], "trendLine": [196.1, 198.0, 199.9, 201.8, 203.7, 205.6, 207.5, 209.5, 211.4, 213.3, 215.2, 217.1, 219.0, 220.9, 222.8, 224.7, 226.6, 228.6, 230.5, 232.4, 234.3, 236.2, 238.1, 240.0, 241.9, 243.8, 245.7, 247.6, 249.6, 251.5, 253.4, 255.3, 257.2, 259.1, 261.0, 262.9, 264.8, 266.7, 268.7, 270.6, 272.5, 274.4, 276.3, 278.2, 280.1, 282.0, 283.9, 285.8, 287.7, 289.7, 291.6, 293.5, 295.4, 297.3, 299.2, 301.1, 303.0, 304.9, 306.8, 308.7, 310.7, 312.6, 314.5, 316.4, 318.3, 320.2, 322.1, 324.0, 325.9, 327.8, 329.8, 331.7, 333.6, 335.5, 337.4, 339.3, 341.2, 343.1, 345.0, 346.9, 348.8, 350.8, 352.7, 354.6, 356.5, 358.4, 360.3, 362.2, 364.1, 366.0, 367.9, 369.9, 371.8, 373.7, 375.6, 377.5, 379.4, 381.3, 383.2, 385.1, 387.0, 388.9, 390.9, 392.8, 394.7, 396.6, 398.5, 400.4, 402.3, 404.2, 406.1, 408.0, 410.0, 411.9], "slope": 1.91, "intercept": 196.09, "trendDirection": "Upward (+)", "heatmap": {"Jan": [137, 126, 212, 209, 157, 211, 297, 306, 230], "Feb": [120, 140, 162, 193, 145, 153, 344, 361, 253], "Mar": [260, 193, 202, 239, 244, 267, 357, 342, 268], "Apr": [242, 258, 216, 281, 288, 344, 380, 363, 343], "May": [279, 255, 303, 313, 346, 434, 471, 417, 426], "Jun": [300, 271, 272, 332, 386, 333, 462, 376, 333], "Jul": [362, 213, 281, 334, 346, 446, 441, 492, 0], "Aug": [356, 258, 312, 273, 332, 398, 422, 481, 0], "Sep": [267, 273, 253, 270, 349, 466, 493, 402, 0], "Oct": [244, 172, 264, 242, 456, 451, 376, 462, 0], "Nov": [205, 158, 191, 181, 263, 329, 306, 287, 0], "Dec": [95, 144, 189, 151, 229, 291, 261, 218, 0]}}, "BRONX": {"total": 23109, "mostAffected": "Bronx", "pctClosed": 67.6, "avgResDays": 13.0, "boroughCounts": [0, 0, 23109, 0, 0], "locationBreakdown": [{"label": "3+ Family Apt. Building", "count": 12724}, {"label": "1-2 Family Dwelling", "count": 3658}, {"label": "Other (Explain Below)", "count": 2065}, {"label": "3+ Family Mixed Use Building", "count": 2023}, {"label": "Commercial Building", "count": 735}, {"label": "Other Types", "count": 1904}], "monthlyCounts": [118, 107, 160, 173, 180, 210, 227, 236, 188, 208, 127, 133, 107, 145, 183, 199, 203, 206, 235, 215, 207, 191, 119, 164, 130, 137, 167, 163, 250, 209, 219, 216, 195, 183, 116, 140, 172, 141, 183, 193, 195, 191, 215, 199, 195, 163, 120, 153, 145, 139, 189, 215, 264, 273, 252, 288, 279, 290, 234, 175, 191, 148, 209, 249, 267, 301, 452, 312, 325, 298, 229, 208, 209, 241, 290, 233, 329, 327, 337, 346, 357, 334, 242, 252, 254, 379, 328, 345, 303, 338, 356, 326, 324, 329, 233, 231, 221, 218, 199, 236, 346, 228], "trendLine": [146.3, 147.9, 149.5, 151.0, 152.6, 154.2, 155.8, 157.4, 159.0, 160.6, 162.2, 163.8, 165.4, 166.9, 168.5, 170.1, 171.7, 173.3, 174.9, 176.5, 178.1, 179.7, 181.2, 182.8, 184.4, 186.0, 187.6, 189.2, 190.8, 192.4, 194.0, 195.6, 197.1, 198.7, 200.3, 201.9, 203.5, 205.1, 206.7, 208.3, 209.9, 211.5, 213.0, 214.6, 216.2, 217.8, 219.4, 221.0, 222.6, 224.2, 225.8, 227.4, 228.9, 230.5, 232.1, 233.7, 235.3, 236.9, 238.5, 240.1, 241.7, 243.3, 244.8, 246.4, 248.0, 249.6, 251.2, 252.8, 254.4, 256.0, 257.6, 259.1, 260.7, 262.3, 263.9, 265.5, 267.1, 268.7, 270.3, 271.9, 273.5, 275.0, 276.6, 278.2, 279.8, 281.4, 283.0, 284.6, 286.2, 287.8, 289.4, 290.9, 292.5, 294.1, 295.7, 297.3, 298.9, 300.5, 302.1, 303.7, 305.3, 306.8, 308.4, 310.0, 311.6, 313.2, 314.8, 316.4, 318.0, 319.6, 321.2, 322.7, 324.3, 325.9], "slope": 1.59, "intercept": 146.27, "trendDirection": "Upward (+)", "heatmap": {"Jan": [118, 107, 130, 172, 145, 191, 209, 254, 221], "Feb": [107, 145, 137, 141, 139, 148, 241, 379, 218], "Mar": [160, 183, 167, 183, 189, 209, 290, 328, 199], "Apr": [173, 199, 163, 193, 215, 249, 233, 345, 236], "May": [180, 203, 250, 195, 264, 267, 329, 303, 346], "Jun": [210, 206, 209, 191, 273, 301, 327, 338, 228], "Jul": [227, 235, 219, 215, 252, 452, 337, 356, 0], "Aug": [236, 215, 216, 199, 288, 312, 346, 326, 0], "Sep": [188, 207, 195, 195, 279, 325, 357, 324, 0], "Oct": [208, 191, 183, 163, 290, 298, 334, 329, 0], "Nov": [127, 119, 116, 120, 234, 229, 242, 233, 0], "Dec": [133, 164, 140, 153, 175, 208, 252, 231, 0]}}, "QUEENS": {"total": 16645, "mostAffected": "Queens", "pctClosed": 80.4, "avgResDays": 12.7, "boroughCounts": [0, 0, 0, 16645, 0], "locationBreakdown": [{"label": "1-2 Family Dwelling", "count": 6409}, {"label": "3+ Family Apt. Building", "count": 3631}, {"label": "Other (Explain Below)", "count": 2405}, {"label": "Commercial Building", "count": 1183}, {"label": "3+ Family Mixed Use Building", "count": 740}, {"label": "Other Types", "count": 2277}], "monthlyCounts": [73, 61, 105, 159, 143, 197, 210, 216, 155, 115, 81, 54, 50, 71, 101, 124, 174, 218, 170, 206, 178, 137, 98, 73, 83, 73, 117, 116, 144, 170, 173, 208, 174, 114, 69, 81, 78, 81, 102, 156, 246, 175, 214, 204, 156, 120, 76, 52, 63, 67, 113, 128, 153, 222, 223, 229, 195, 170, 97, 88, 86, 86, 162, 162, 200, 210, 292, 228, 220, 198, 135, 124, 123, 142, 167, 162, 254, 268, 248, 307, 261, 211, 143, 124, 181, 225, 210, 228, 220, 271, 383, 331, 272, 234, 165, 142, 125, 161, 159, 185, 306, 235], "trendLine": [104.6, 105.8, 106.9, 108.1, 109.3, 110.4, 111.6, 112.7, 113.9, 115.1, 116.2, 117.4, 118.5, 119.7, 120.9, 122.0, 123.2, 124.3, 125.5, 126.7, 127.8, 129.0, 130.1, 131.3, 132.5, 133.6, 134.8, 135.9, 137.1, 138.3, 139.4, 140.6, 141.7, 142.9, 144.1, 145.2, 146.4, 147.5, 148.7, 149.8, 151.0, 152.2, 153.3, 154.5, 155.6, 156.8, 158.0, 159.1, 160.3, 161.4, 162.6, 163.8, 164.9, 166.1, 167.2, 168.4, 169.6, 170.7, 171.9, 173.0, 174.2, 175.4, 176.5, 177.7, 178.8, 180.0, 181.2, 182.3, 183.5, 184.6, 185.8, 187.0, 188.1, 189.3, 190.4, 191.6, 192.8, 193.9, 195.1, 196.2, 197.4, 198.6, 199.7, 200.9, 202.0, 203.2, 204.4, 205.5, 206.7, 207.8, 209.0, 210.2, 211.3, 212.5, 213.6, 214.8, 216.0, 217.1, 218.3, 219.4, 220.6, 221.8, 222.9, 224.1, 225.2, 226.4, 227.6, 228.7, 229.9, 231.0, 232.2, 233.4, 234.5, 235.7], "slope": 1.16, "intercept": 104.62, "trendDirection": "Upward (+)", "heatmap": {"Jan": [73, 50, 83, 78, 63, 86, 123, 181, 125], "Feb": [61, 71, 73, 81, 67, 86, 142, 225, 161], "Mar": [105, 101, 117, 102, 113, 162, 167, 210, 159], "Apr": [159, 124, 116, 156, 128, 162, 162, 228, 185], "May": [143, 174, 144, 246, 153, 200, 254, 220, 306], "Jun": [197, 218, 170, 175, 222, 210, 268, 271, 235], "Jul": [210, 170, 173, 214, 223, 292, 248, 383, 0], "Aug": [216, 206, 208, 204, 229, 228, 307, 331, 0], "Sep": [155, 178, 174, 156, 195, 220, 261, 272, 0], "Oct": [115, 137, 114, 120, 170, 198, 211, 234, 0], "Nov": [81, 98, 69, 76, 97, 135, 143, 165, 0], "Dec": [54, 73, 81, 52, 88, 124, 124, 142, 0]}}, "STATEN ISLAND": {"total": 5425, "mostAffected": "Staten Island", "pctClosed": 81.1, "avgResDays": 19.5, "boroughCounts": [0, 0, 0, 0, 5425], "locationBreakdown": [{"label": "1-2 Family Dwelling", "count": 2975}, {"label": "Other (Explain Below)", "count": 743}, {"label": "Vacant Lot", "count": 469}, {"label": "3+ Family Apt. Building", "count": 367}, {"label": "Commercial Building", "count": 282}, {"label": "Other Types", "count": 589}], "monthlyCounts": [33, 8, 27, 49, 94, 83, 101, 91, 65, 41, 27, 13, 14, 21, 50, 47, 61, 90, 59, 66, 64, 36, 28, 12, 19, 30, 37, 34, 64, 59, 79, 92, 53, 40, 11, 20, 30, 35, 58, 74, 71, 69, 73, 73, 60, 60, 27, 11, 9, 17, 43, 54, 87, 88, 72, 91, 54, 61, 15, 26, 14, 19, 43, 56, 54, 76, 94, 73, 63, 50, 27, 25, 23, 19, 48, 52, 81, 102, 115, 104, 73, 59, 29, 29, 34, 37, 36, 49, 81, 127, 115, 100, 72, 65, 38, 30, 30, 36, 49, 50, 92, 80], "trendLine": [44.9, 45.0, 45.2, 45.4, 45.5, 45.7, 45.8, 46.0, 46.2, 46.3, 46.5, 46.7, 46.8, 47.0, 47.2, 47.3, 47.5, 47.7, 47.8, 48.0, 48.2, 48.3, 48.5, 48.6, 48.8, 49.0, 49.1, 49.3, 49.5, 49.6, 49.8, 50.0, 50.1, 50.3, 50.5, 50.6, 50.8, 51.0, 51.1, 51.3, 51.5, 51.6, 51.8, 51.9, 52.1, 52.3, 52.4, 52.6, 52.8, 52.9, 53.1, 53.3, 53.4, 53.6, 53.8, 53.9, 54.1, 54.3, 54.4, 54.6, 54.8, 54.9, 55.1, 55.2, 55.4, 55.6, 55.7, 55.9, 56.1, 56.2, 56.4, 56.6, 56.7, 56.9, 57.1, 57.2, 57.4, 57.6, 57.7, 57.9, 58.1, 58.2, 58.4, 58.5, 58.7, 58.9, 59.0, 59.2, 59.4, 59.5, 59.7, 59.9, 60.0, 60.2, 60.4, 60.5, 60.7, 60.9, 61.0, 61.2, 61.4, 61.5, 61.7, 61.8, 62.0, 62.2, 62.3, 62.5, 62.7, 62.8, 63.0, 63.2, 63.3, 63.5], "slope": 0.16, "intercept": 44.86, "trendDirection": "Upward (+)", "heatmap": {"Jan": [33, 14, 19, 30, 9, 14, 23, 34, 30], "Feb": [8, 21, 30, 35, 17, 19, 19, 37, 36], "Mar": [27, 50, 37, 58, 43, 43, 48, 36, 49], "Apr": [49, 47, 34, 74, 54, 56, 52, 49, 50], "May": [94, 61, 64, 71, 87, 54, 81, 81, 92], "Jun": [83, 90, 59, 69, 88, 76, 102, 127, 80], "Jul": [101, 59, 79, 73, 72, 94, 115, 115, 0], "Aug": [91, 66, 92, 73, 91, 73, 104, 100, 0], "Sep": [65, 64, 53, 60, 54, 63, 73, 72, 0], "Oct": [41, 36, 40, 60, 61, 50, 59, 65, 0], "Nov": [27, 28, 11, 27, 15, 27, 29, 38, 0], "Dec": [13, 12, 20, 11, 26, 25, 29, 30, 0]}}}, "zips": [{"zip": "10000", "b": "MANHATTAN", "c": 3, "lat": 40.7823, "lng": -73.9651}, {"zip": "10001", "b": "MANHATTAN", "c": 455, "lat": 40.7491, "lng": -73.9943}, {"zip": "10002", "b": "MANHATTAN", "c": 1470, "lat": 40.7165, "lng": -73.9877}, {"zip": "10003", "b": "MANHATTAN", "c": 706, "lat": 40.7294, "lng": -73.9881}, {"zip": "10004", "b": "MANHATTAN", "c": 43, "lat": 40.7036, "lng": -74.0123}, {"zip": "10005", "b": "MANHATTAN", "c": 25, "lat": 40.7061, "lng": -74.0086}, {"zip": "10006", "b": "MANHATTAN", "c": 108, "lat": 40.7076, "lng": -74.0133}, {"zip": "10007", "b": "MANHATTAN", "c": 277, "lat": 40.7144, "lng": -74.0069}, {"zip": "10009", "b": "MANHATTAN", "c": 1259, "lat": 40.7252, "lng": -73.9806}, {"zip": "10010", "b": "MANHATTAN", "c": 370, "lat": 40.7396, "lng": -73.9832}, {"zip": "10011", "b": "MANHATTAN", "c": 667, "lat": 40.7417, "lng": -73.9993}, {"zip": "10012", "b": "MANHATTAN", "c": 581, "lat": 40.7254, "lng": -73.9987}, {"zip": "10013", "b": "MANHATTAN", "c": 719, "lat": 40.7197, "lng": -74.0039}, {"zip": "10014", "b": "MANHATTAN", "c": 650, "lat": 40.7336, "lng": -74.0042}, {"zip": "10016", "b": "MANHATTAN", "c": 453, "lat": 40.7445, "lng": -73.9792}, {"zip": "10017", "b": "MANHATTAN", "c": 86, "lat": 40.7522, "lng": -73.9719}, {"zip": "10018", "b": "MANHATTAN", "c": 150, "lat": 40.7549, "lng": -73.9925}, {"zip": "10019", "b": "MANHATTAN", "c": 478, "lat": 40.7648, "lng": -73.9862}, {"zip": "10020", "b": "MANHATTAN", "c": 2, "lat": 40.7585, "lng": -73.98}, {"zip": "10021", "b": "MANHATTAN", "c": 380, "lat": 40.7695, "lng": -73.9578}, {"zip": "10022", "b": "MANHATTAN", "c": 389, "lat": 40.7582, "lng": -73.9664}, {"zip": "10023", "b": "MANHATTAN", "c": 843, "lat": 40.7775, "lng": -73.9809}, {"zip": "10024", "b": "MANHATTAN", "c": 1399, "lat": 40.7869, "lng": -73.9758}, {"zip": "10025", "b": "MANHATTAN", "c": 2625, "lat": 40.798, "lng": -73.9674}, {"zip": "10026", "b": "MANHATTAN", "c": 1351, "lat": 40.8028, "lng": -73.9531}, {"zip": "10027", "b": "MANHATTAN", "c": 1531, "lat": 40.8105, "lng": -73.9512}, {"zip": "10028", "b": "MANHATTAN", "c": 701, "lat": 40.7756, "lng": -73.9523}, {"zip": "10029", "b": "MANHATTAN", "c": 1220, "lat": 40.7928, "lng": -73.9448}, {"zip": "10030", "b": "MANHATTAN", "c": 845, "lat": 40.8179, "lng": -73.9427}, {"zip": "10031", "b": "MANHATTAN", "c": 1616, "lat": 40.8261, "lng": -73.9484}, {"zip": "10032", "b": "MANHATTAN", "c": 1143, "lat": 40.8374, "lng": -73.9413}, {"zip": "10033", "b": "MANHATTAN", "c": 1058, "lat": 40.8494, "lng": -73.9362}, {"zip": "10034", "b": "MANHATTAN", "c": 831, "lat": 40.8659, "lng": -73.9212}, {"zip": "10035", "b": "MANHATTAN", "c": 830, "lat": 40.8019, "lng": -73.939}, {"zip": "10036", "b": "MANHATTAN", "c": 562, "lat": 40.7611, "lng": -73.9912}, {"zip": "10037", "b": "MANHATTAN", "c": 274, "lat": 40.8134, "lng": -73.9381}, {"zip": "10038", "b": "MANHATTAN", "c": 372, "lat": 40.7098, "lng": -74.0026}, {"zip": "10039", "b": "MANHATTAN", "c": 347, "lat": 40.8247, "lng": -73.939}, {"zip": "10040", "b": "MANHATTAN", "c": 687, "lat": 40.8584, "lng": -73.9299}, {"zip": "10044", "b": "MANHATTAN", "c": 10, "lat": 40.7618, "lng": -73.9498}, {"zip": "10048", "b": "MANHATTAN", "c": 1, "lat": 40.7127, "lng": -74.0134}, {"zip": "10065", "b": "MANHATTAN", "c": 276, "lat": 40.7646, "lng": -73.9643}, {"zip": "10069", "b": "MANHATTAN", "c": 30, "lat": 40.7767, "lng": -73.989}, {"zip": "10075", "b": "MANHATTAN", "c": 256, "lat": 40.7724, "lng": -73.954}, {"zip": "10111", "b": "MANHATTAN", "c": 1, "lat": 40.7594, "lng": -73.9782}, {"zip": "10112", "b": "MANHATTAN", "c": 1, "lat": 40.7587, "lng": -73.9796}, {"zip": "10118", "b": "MANHATTAN", "c": 1, "lat": 40.7482, "lng": -73.9855}, {"zip": "10120", "b": "MANHATTAN", "c": 1, "lat": 40.75, "lng": -73.9884}, {"zip": "10121", "b": "MANHATTAN", "c": 1, "lat": 40.75, "lng": -73.9921}, {"zip": "10128", "b": "MANHATTAN", "c": 1313, "lat": 40.7807, "lng": -73.9498}, {"zip": "10151", "b": "MANHATTAN", "c": 1, "lat": 40.7633, "lng": -73.9737}, {"zip": "10162", "b": "MANHATTAN", "c": 10, "lat": 40.77, "lng": -73.9512}, {"zip": "10174", "b": "MANHATTAN", "c": 1, "lat": 40.7516, "lng": -73.9754}, {"zip": "10271", "b": "MANHATTAN", "c": 1, "lat": 40.708, "lng": -74.0102}, {"zip": "10280", "b": "MANHATTAN", "c": 21, "lat": 40.709, "lng": -74.0166}, {"zip": "10282", "b": "MANHATTAN", "c": 14, "lat": 40.7168, "lng": -74.0148}, {"zip": "10301", "b": "STATEN ISLAND", "c": 433, "lat": 40.6346, "lng": -74.0893}, {"zip": "10302", "b": "STATEN ISLAND", "c": 331, "lat": 40.6306, "lng": -74.1362}, {"zip": "10303", "b": "STATEN ISLAND", "c": 397, "lat": 40.6309, "lng": -74.1572}, {"zip": "10304", "b": "STATEN ISLAND", "c": 484, "lat": 40.6154, "lng": -74.0858}, {"zip": "10305", "b": "STATEN ISLAND", "c": 458, "lat": 40.5975, "lng": -74.0754}, {"zip": "10306", "b": "STATEN ISLAND", "c": 750, "lat": 40.5673, "lng": -74.1135}, {"zip": "10307", "b": "STATEN ISLAND", "c": 134, "lat": 40.5099, "lng": -74.241}, {"zip": "10308", "b": "STATEN ISLAND", "c": 298, "lat": 40.5541, "lng": -74.1503}, {"zip": "10309", "b": "STATEN ISLAND", "c": 284, "lat": 40.5338, "lng": -74.2118}, {"zip": "10310", "b": "STATEN ISLAND", "c": 393, "lat": 40.6316, "lng": -74.121}, {"zip": "10312", "b": "STATEN ISLAND", "c": 602, "lat": 40.5489, "lng": -74.1803}, {"zip": "10314", "b": "STATEN ISLAND", "c": 831, "lat": 40.6065, "lng": -74.1448}, {"zip": "10451", "b": "BRONX", "c": 902, "lat": 40.8228, "lng": -73.9205}, {"zip": "10452", "b": "BRONX", "c": 1301, "lat": 40.8365, "lng": -73.9224}, {"zip": "10453", "b": "BRONX", "c": 1418, "lat": 40.8521, "lng": -73.9112}, {"zip": "10454", "b": "BRONX", "c": 618, "lat": 40.8075, "lng": -73.9196}, {"zip": "10455", "b": "BRONX", "c": 903, "lat": 40.8156, "lng": -73.9075}, {"zip": "10456", "b": "BRONX", "c": 1949, "lat": 40.8311, "lng": -73.9091}, {"zip": "10457", "b": "BRONX", "c": 1843, "lat": 40.8477, "lng": -73.8999}, {"zip": "10458", "b": "BRONX", "c": 1745, "lat": 40.8614, "lng": -73.8892}, {"zip": "10459", "b": "BRONX", "c": 1166, "lat": 40.8254, "lng": -73.8947}, {"zip": "10460", "b": "BRONX", "c": 1111, "lat": 40.841, "lng": -73.8799}, {"zip": "10461", "b": "BRONX", "c": 395, "lat": 40.8474, "lng": -73.8408}, {"zip": "10462", "b": "BRONX", "c": 1135, "lat": 40.8482, "lng": -73.8625}, {"zip": "10463", "b": "BRONX", "c": 891, "lat": 40.8805, "lng": -73.9041}, {"zip": "10463", "b": "MANHATTAN", "c": 16, "lat": 40.8754, "lng": -73.9104}, {"zip": "10464", "b": "BRONX", "c": 53, "lat": 40.8487, "lng": -73.7874}, {"zip": "10465", "b": "BRONX", "c": 377, "lat": 40.8281, "lng": -73.8202}, {"zip": "10466", "b": "BRONX", "c": 637, "lat": 40.8909, "lng": -73.8504}, {"zip": "10467", "b": "BRONX", "c": 2023, "lat": 40.8737, "lng": -73.8708}, {"zip": "10468", "b": "BRONX", "c": 1412, "lat": 40.8666, "lng": -73.8997}, {"zip": "10469", "b": "BRONX", "c": 770, "lat": 40.8709, "lng": -73.8508}, {"zip": "10470", "b": "BRONX", "c": 219, "lat": 40.901, "lng": -73.8592}, {"zip": "10471", "b": "BRONX", "c": 174, "lat": 40.9007, "lng": -73.9017}, {"zip": "10472", "b": "BRONX", "c": 1086, "lat": 40.8294, "lng": -73.8692}, {"zip": "10473", "b": "BRONX", "c": 395, "lat": 40.8174, "lng": -73.8597}, {"zip": "10474", "b": "BRONX", "c": 403, "lat": 40.8159, "lng": -73.8876}, {"zip": "10475", "b": "BRONX", "c": 80, "lat": 40.8774, "lng": -73.8285}, {"zip": "11001", "b": "QUEENS", "c": 48, "lat": 40.733, "lng": -73.71}, {"zip": "11004", "b": "QUEENS", "c": 26, "lat": 40.7436, "lng": -73.7107}, {"zip": "11040", "b": "QUEENS", "c": 8, "lat": 40.7512, "lng": -73.7312}, {"zip": "11101", "b": "QUEENS", "c": 637, "lat": 40.7486, "lng": -73.9402}, {"zip": "11102", "b": "QUEENS", "c": 172, "lat": 40.7713, "lng": -73.9239}, {"zip": "11103", "b": "QUEENS", "c": 465, "lat": 40.7619, "lng": -73.913}, {"zip": "11104", "b": "QUEENS", "c": 213, "lat": 40.7445, "lng": -73.9227}, {"zip": "11105", "b": "QUEENS", "c": 205, "lat": 40.7757, "lng": -73.9094}, {"zip": "11106", "b": "QUEENS", "c": 310, "lat": 40.7617, "lng": -73.9327}, {"zip": "11109", "b": "QUEENS", "c": 1, "lat": 40.7443, "lng": -73.9577}, {"zip": "11201", "b": "BROOKLYN", "c": 744, "lat": 40.6931, "lng": -73.9903}, {"zip": "11203", "b": "BROOKLYN", "c": 1185, "lat": 40.6524, "lng": -73.9352}, {"zip": "11204", "b": "BROOKLYN", "c": 323, "lat": 40.6183, "lng": -73.9846}, {"zip": "11205", "b": "BROOKLYN", "c": 1119, "lat": 40.6929, "lng": -73.9615}, {"zip": "11206", "b": "BROOKLYN", "c": 1660, "lat": 40.6992, "lng": -73.942}, {"zip": "11207", "b": "BROOKLYN", "c": 1933, "lat": 40.6743, "lng": -73.8974}, {"zip": "11208", "b": "BROOKLYN", "c": 1100, "lat": 40.6755, "lng": -73.8748}, {"zip": "11208", "b": "QUEENS", "c": 4, "lat": 40.6737, "lng": -73.8598}, {"zip": "11209", "b": "BROOKLYN", "c": 281, "lat": 40.6253, "lng": -74.0286}, {"zip": "11210", "b": "BROOKLYN", "c": 434, "lat": 40.6313, "lng": -73.9459}, {"zip": "11211", "b": "BROOKLYN", "c": 1535, "lat": 40.7129, "lng": -73.952}, {"zip": "11212", "b": "BROOKLYN", "c": 1180, "lat": 40.663, "lng": -73.916}, {"zip": "11213", "b": "BROOKLYN", "c": 1574, "lat": 40.6705, "lng": -73.9364}, {"zip": "11214", "b": "BROOKLYN", "c": 566, "lat": 40.601, "lng": -73.9993}, {"zip": "11215", "b": "BROOKLYN", "c": 1584, "lat": 40.6682, "lng": -73.9837}, {"zip": "11216", "b": "BROOKLYN", "c": 2816, "lat": 40.68, "lng": -73.9506}, {"zip": "11217", "b": "BROOKLYN", "c": 1593, "lat": 40.6819, "lng": -73.9775}, {"zip": "11218", "b": "BROOKLYN", "c": 461, "lat": 40.643, "lng": -73.9767}, {"zip": "11219", "b": "BROOKLYN", "c": 456, "lat": 40.6321, "lng": -73.9971}, {"zip": "11220", "b": "BROOKLYN", "c": 465, "lat": 40.6412, "lng": -74.0142}, {"zip": "11221", "b": "BROOKLYN", "c": 3410, "lat": 40.6912, "lng": -73.9271}, {"zip": "11222", "b": "BROOKLYN", "c": 1093, "lat": 40.7269, "lng": -73.9491}, {"zip": "11223", "b": "BROOKLYN", "c": 452, "lat": 40.5997, "lng": -73.9736}, {"zip": "11224", "b": "BROOKLYN", "c": 311, "lat": 40.5769, "lng": -73.9865}, {"zip": "11225", "b": "BROOKLYN", "c": 1213, "lat": 40.665, "lng": -73.9547}, {"zip": "11226", "b": "BROOKLYN", "c": 1568, "lat": 40.6479, "lng": -73.9563}, {"zip": "11228", "b": "BROOKLYN", "c": 194, "lat": 40.6192, "lng": -74.0131}, {"zip": "11229", "b": "BROOKLYN", "c": 303, "lat": 40.6005, "lng": -73.9451}, {"zip": "11230", "b": "BROOKLYN", "c": 473, "lat": 40.6224, "lng": -73.9667}, {"zip": "11231", "b": "BROOKLYN", "c": 556, "lat": 40.6813, "lng": -73.9982}, {"zip": "11232", "b": "BROOKLYN", "c": 207, "lat": 40.6567, "lng": -74.0007}, {"zip": "11233", "b": "BROOKLYN", "c": 2154, "lat": 40.6788, "lng": -73.9194}, {"zip": "11234", "b": "BROOKLYN", "c": 513, "lat": 40.6225, "lng": -73.9227}, {"zip": "11235", "b": "BROOKLYN", "c": 691, "lat": 40.5823, "lng": -73.9572}, {"zip": "11236", "b": "BROOKLYN", "c": 640, "lat": 40.6416, "lng": -73.9051}, {"zip": "11237", "b": "BROOKLYN", "c": 1507, "lat": 40.7008, "lng": -73.9179}, {"zip": "11237", "b": "QUEENS", "c": 7, "lat": 40.7029, "lng": -73.9133}, {"zip": "11238", "b": "BROOKLYN", "c": 2568, "lat": 40.6796, "lng": -73.9636}, {"zip": "11239", "b": "BROOKLYN", "c": 9, "lat": 40.6497, "lng": -73.8771}, {"zip": "11242", "b": "BROOKLYN", "c": 1, "lat": 40.6932, "lng": -73.9907}, {"zip": "11249", "b": "BROOKLYN", "c": 375, "lat": 40.7129, "lng": -73.963}, {"zip": "11354", "b": "QUEENS", "c": 184, "lat": 40.7647, "lng": -73.8275}, {"zip": "11355", "b": "QUEENS", "c": 259, "lat": 40.753, "lng": -73.8239}, {"zip": "11356", "b": "QUEENS", "c": 89, "lat": 40.7857, "lng": -73.8447}, {"zip": "11357", "b": "QUEENS", "c": 303, "lat": 40.7846, "lng": -73.8106}, {"zip": "11358", "b": "QUEENS", "c": 126, "lat": 40.7618, "lng": -73.7959}, {"zip": "11360", "b": "QUEENS", "c": 38, "lat": 40.7828, "lng": -73.7854}, {"zip": "11361", "b": "QUEENS", "c": 189, "lat": 40.7604, "lng": -73.7714}, {"zip": "11362", "b": "QUEENS", "c": 43, "lat": 40.7585, "lng": -73.734}, {"zip": "11363", "b": "QUEENS", "c": 22, "lat": 40.7727, "lng": -73.7466}, {"zip": "11364", "b": "QUEENS", "c": 67, "lat": 40.7475, "lng": -73.761}, {"zip": "11365", "b": "QUEENS", "c": 92, "lat": 40.7371, "lng": -73.7993}, {"zip": "11366", "b": "QUEENS", "c": 47, "lat": 40.7272, "lng": -73.7964}, {"zip": "11367", "b": "QUEENS", "c": 134, "lat": 40.7275, "lng": -73.82}, {"zip": "11368", "b": "QUEENS", "c": 580, "lat": 40.747, "lng": -73.8613}, {"zip": "11369", "b": "QUEENS", "c": 179, "lat": 40.7626, "lng": -73.8712}, {"zip": "11370", "b": "QUEENS", "c": 206, "lat": 40.7637, "lng": -73.8889}, {"zip": "11372", "b": "QUEENS", "c": 505, "lat": 40.7515, "lng": -73.8872}, {"zip": "11373", "b": "QUEENS", "c": 579, "lat": 40.7399, "lng": -73.8788}, {"zip": "11374", "b": "QUEENS", "c": 325, "lat": 40.7293, "lng": -73.8604}, {"zip": "11375", "b": "QUEENS", "c": 269, "lat": 40.7236, "lng": -73.8482}, {"zip": "11377", "b": "QUEENS", "c": 933, "lat": 40.7448, "lng": -73.9038}, {"zip": "11378", "b": "QUEENS", "c": 464, "lat": 40.7234, "lng": -73.9023}, {"zip": "11379", "b": "QUEENS", "c": 414, "lat": 40.7184, "lng": -73.8809}, {"zip": "11385", "b": "BROOKLYN", "c": 1, "lat": 40.7105, "lng": -73.9207}, {"zip": "11385", "b": "QUEENS", "c": 1768, "lat": 40.7038, "lng": -73.902}, {"zip": "11411", "b": "QUEENS", "c": 114, "lat": 40.695, "lng": -73.7377}, {"zip": "11412", "b": "QUEENS", "c": 530, "lat": 40.6982, "lng": -73.7585}, {"zip": "11413", "b": "QUEENS", "c": 277, "lat": 40.6744, "lng": -73.7513}, {"zip": "11414", "b": "QUEENS", "c": 180, "lat": 40.6615, "lng": -73.8446}, {"zip": "11415", "b": "QUEENS", "c": 69, "lat": 40.7083, "lng": -73.829}, {"zip": "11416", "b": "BROOKLYN", "c": 2, "lat": 40.6804, "lng": -73.8636}, {"zip": "11416", "b": "QUEENS", "c": 219, "lat": 40.6847, "lng": -73.8488}, {"zip": "11417", "b": "QUEENS", "c": 326, "lat": 40.6761, "lng": -73.8423}, {"zip": "11418", "b": "QUEENS", "c": 298, "lat": 40.6985, "lng": -73.8306}, {"zip": "11419", "b": "QUEENS", "c": 354, "lat": 40.6885, "lng": -73.8237}, {"zip": "11420", "b": "QUEENS", "c": 348, "lat": 40.6764, "lng": -73.8144}, {"zip": "11421", "b": "QUEENS", "c": 209, "lat": 40.6912, "lng": -73.8565}, {"zip": "11422", "b": "QUEENS", "c": 121, "lat": 40.6641, "lng": -73.7353}, {"zip": "11423", "b": "QUEENS", "c": 187, "lat": 40.7126, "lng": -73.7697}, {"zip": "11426", "b": "QUEENS", "c": 109, "lat": 40.7351, "lng": -73.721}, {"zip": "11427", "b": "QUEENS", "c": 76, "lat": 40.7288, "lng": -73.7473}, {"zip": "11428", "b": "QUEENS", "c": 71, "lat": 40.7193, "lng": -73.7449}, {"zip": "11429", "b": "QUEENS", "c": 224, "lat": 40.7089, "lng": -73.7407}, {"zip": "11430", "b": "QUEENS", "c": 12, "lat": 40.6488, "lng": -73.7882}, {"zip": "11432", "b": "QUEENS", "c": 485, "lat": 40.7102, "lng": -73.7949}, {"zip": "11433", "b": "QUEENS", "c": 654, "lat": 40.697, "lng": -73.7885}, {"zip": "11434", "b": "QUEENS", "c": 501, "lat": 40.6803, "lng": -73.7781}, {"zip": "11435", "b": "QUEENS", "c": 549, "lat": 40.6989, "lng": -73.8085}, {"zip": "11436", "b": "QUEENS", "c": 256, "lat": 40.6763, "lng": -73.7969}, {"zip": "11691", "b": "QUEENS", "c": 249, "lat": 40.6006, "lng": -73.7583}, {"zip": "11692", "b": "QUEENS", "c": 84, "lat": 40.5939, "lng": -73.7944}, {"zip": "11693", "b": "QUEENS", "c": 69, "lat": 40.5924, "lng": -73.8157}, {"zip": "11694", "b": "QUEENS", "c": 78, "lat": 40.578, "lng": -73.8412}, {"zip": "11697", "b": "QUEENS", "c": 1, "lat": 40.567, "lng": -73.8922}], "pins": [{"id": 38531196, "b": "BRONX", "a": "2956 BAINBRIDGE AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2018-02-23", "lat": 40.8706, "lng": -73.8845}, {"id": 20241306, "b": "BRONX", "a": "1075 NELSON AVENUE", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2011-04-15", "lat": 40.8346, "lng": -73.9275}, {"id": 22934440, "b": "BRONX", "a": "2099 WEBSTER AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-03-23", "lat": 40.8525, "lng": -73.898}, {"id": 30659743, "b": "BRONX", "a": "2120 TIEBOUT AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2015-05-20", "lat": 40.8532, "lng": -73.8987}, {"id": 25069134, "b": "BRONX", "a": "684 COURTLANDT AVENUE", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2013-02-25", "lat": 40.8197, "lng": -73.9181}, {"id": 35026871, "b": "BRONX", "a": "1040 ANDERSON AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-12-15", "lat": 40.8332, "lng": -73.9265}, {"id": 25508876, "b": "BRONX", "a": "1215 WHEELER AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-05-08", "lat": 40.8291, "lng": -73.8803}, {"id": 17566085, "b": "BRONX", "a": "2137 LURTING AVENUE", "t": "Vacant Lot", "s": "Closed", "d": "2010-07-02", "lat": 40.8552, "lng": -73.8583}, {"id": 36410791, "b": "BRONX", "a": "2709 DECATUR AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-06-11", "lat": 40.865, "lng": -73.8886}, {"id": 34021057, "b": "BRONX", "a": "225 EAST 203 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-08-05", "lat": 40.8738, "lng": -73.8857}, {"id": 30486144, "b": "BRONX", "a": "1460 WASHINGTON AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2015-04-26", "lat": 40.8367, "lng": -73.9038}, {"id": 33782866, "b": "BRONX", "a": "2559 GRANDCONCOURSE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-07-07", "lat": 40.8637, "lng": -73.8962}, {"id": 20559967, "b": "BRONX", "a": "770 BRYANT AVENUE", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2011-06-03", "lat": 40.8161, "lng": -73.8859}, {"id": 31095054, "b": "BRONX", "a": "2486 DAVIDSON AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2015-07-16", "lat": 40.8636, "lng": -73.9013}, {"id": 21061895, "b": "BRONX", "a": "422 EAST 161 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2011-08-18", "lat": 40.8239, "lng": -73.913}, {"id": 35538518, "b": "BRONX", "a": "3110 KINGSBRIDGE TERRACE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-02-21", "lat": 40.8775, "lng": -73.8999}, {"id": 31806199, "b": "BRONX", "a": "1074 SUMMIT AVENUE", "t": "3+ Family Mixed Use Building", "s": "Pending", "d": "2015-10-26", "lat": 40.8352, "lng": -73.9291}, {"id": 31183141, "b": "BRONX", "a": "2930 TENBROECK AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2015-07-28", "lat": 40.8683, "lng": -73.8528}, {"id": 38814930, "b": "BRONX", "a": "1214 SHAKESPEARE AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2018-03-29", "lat": 40.8372, "lng": -73.9233}, {"id": 34269217, "b": "BRONX", "a": "1133 BOSTON ROAD", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-09-09", "lat": 40.8279, "lng": -73.9042}, {"id": 19984439, "b": "BRONX", "a": "1250 LELAND AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-03-08", "lat": 40.8315, "lng": -73.8634}, {"id": 22797537, "b": "BRONX", "a": "3021 BRIGGS AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2012-02-29", "lat": 40.8726, "lng": -73.8836}, {"id": 37963956, "b": "BRONX", "a": "835 HOME STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2017-12-18", "lat": 40.8278, "lng": -73.8988}, {"id": 22945192, "b": "BRONX", "a": "1187 ANDERSON AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2012-03-25", "lat": 40.8368, "lng": -73.9237}, {"id": 23114489, "b": "BRONX", "a": "2719 SEDGWICK AVENUE", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2012-04-24", "lat": 40.8702, "lng": -73.9029}, {"id": 35600615, "b": "BRONX", "a": "522 EAST 149TH STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-03-01", "lat": 40.8145, "lng": -73.9144}, {"id": 36591750, "b": "BRONX", "a": "3251 BRUNER AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-07-01", "lat": 40.8755, "lng": -73.8396}, {"id": 31402279, "b": "BRONX", "a": "1775 DAVIDSON AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2015-08-27", "lat": 40.8488, "lng": -73.9127}, {"id": 26055752, "b": "BRONX", "a": "518 EAST 187 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2013-08-02", "lat": 40.857, "lng": -73.8903}, {"id": 32725508, "b": "BRONX", "a": "3235 GRAND CONCOURSE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-02-19", "lat": 40.8777, "lng": -73.8859}, {"id": 35778783, "b": "BRONX", "a": "2059 DAVIDSON AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2017-03-23", "lat": 40.8543, "lng": -73.9083}, {"id": 36926820, "b": "BRONX", "a": "2160 HOLLAND AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-08-11", "lat": 40.8553, "lng": -73.8657}, {"id": 33446931, "b": "BRONX", "a": "951 WOODCREST AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-05-26", "lat": 40.8314, "lng": -73.929}, {"id": 33055944, "b": "BRONX", "a": "1995 BIRCHALL AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-04-04", "lat": 40.8494, "lng": -73.8681}, {"id": 15669882, "b": "BRONX", "a": "1304 MERRIAM AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2010-01-06", "lat": 40.8405, "lng": -73.9262}, {"id": 34273751, "b": "BRONX", "a": "2141 CROTONA AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-09-08", "lat": 40.8493, "lng": -73.8877}, {"id": 28657546, "b": "BRONX", "a": "278 BROOK AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-08-10", "lat": 40.8085, "lng": -73.9187}, {"id": 24328758, "b": "BRONX", "a": "351 EAST 138 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2012-11-03", "lat": 40.8097, "lng": -73.9243}, {"id": 21721618, "b": "BRONX", "a": "288 EAST 211 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-10-24", "lat": 40.88, "lng": -73.8744}, {"id": 22265314, "b": "BRONX", "a": "890 MORRIS AVENUE", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2011-12-05", "lat": 40.8261, "lng": -73.9182}, {"id": 38166042, "b": "BRONX", "a": "1085 SOUTHERN BOULEVARD", "t": "Other (Explain Below)", "s": "Closed", "d": "2018-01-09", "lat": 40.8257, "lng": -73.8919}, {"id": 29382345, "b": "BRONX", "a": "1852 HAIGHT AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2014-11-27", "lat": 40.8506, "lng": -73.8538}, {"id": 34128886, "b": "BRONX", "a": "2145 BRUCKNER BOULEVARD", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2016-08-19", "lat": 40.8274, "lng": -73.8517}, {"id": 27120757, "b": "BRONX", "a": "1395 CROTONA AVENUE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2014-01-10", "lat": 40.8333, "lng": -73.8981}, {"id": 16458227, "b": "BRONX", "a": "3033 BRONXWOOD AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2010-04-16", "lat": 40.8701, "lng": -73.8614}, {"id": 37606612, "b": "BRONX", "a": "6 WEST FARMS SQUARE PLAZA", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-11-04", "lat": 40.8416, "lng": -73.8806}, {"id": 29104482, "b": "BRONX", "a": "306 EAST 171 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-10-20", "lat": 40.8386, "lng": -73.9097}, {"id": 27008745, "b": "BRONX", "a": "38 FEATHERBED LANE", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2013-12-29", "lat": 40.846, "lng": -73.9155}, {"id": 31635722, "b": "BRONX", "a": "2860 DECATUR AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2015-09-28", "lat": 40.8676, "lng": -73.8848}, {"id": 20910105, "b": "BRONX", "a": "269 EAST 194 STREET", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2011-07-26", "lat": 40.8649, "lng": -73.8925}, {"id": 19556547, "b": "BRONX", "a": "2121 CEDAR AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2011-01-08", "lat": 40.8603, "lng": -73.9137}, {"id": 25450617, "b": "BRONX", "a": "2710 VALENTINE AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-04-29", "lat": 40.8667, "lng": -73.8924}, {"id": 34437174, "b": "BRONX", "a": "794 FAIRMONT PLACE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-09-29", "lat": 40.8427, "lng": -73.889}, {"id": 16698468, "b": "BRONX", "a": "2750 BOSTON ROAD", "t": "Commercial Building", "s": "Pending", "d": "2010-05-20", "lat": 40.8666, "lng": -73.8609}, {"id": 36107788, "b": "BRONX", "a": "1064 WALTON AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-05-05", "lat": 40.8318, "lng": -73.9214}, {"id": 16810978, "b": "BRONX", "a": "813 FAILE STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2010-06-07", "lat": 40.8172, "lng": -73.8872}, {"id": 35114637, "b": "BRONX", "a": "1850 DAVIDSON AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-12-27", "lat": 40.8499, "lng": -73.9119}, {"id": 35612153, "b": "BRONX", "a": "1007 SOUTHERN BOULEVARD", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2017-03-02", "lat": 40.8229, "lng": -73.8918}, {"id": 32584761, "b": "BRONX", "a": "888A GRAND CONCOURSE", "t": "1-2 Family Mixed Use Building", "s": "Assigned", "d": "2016-02-02", "lat": 40.8265, "lng": -73.9228}, {"id": 23606768, "b": "BRONX", "a": "1260 MANOR AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2012-07-12", "lat": 40.8307, "lng": -73.8768}, {"id": 29030249, "b": "BROOKLYN", "a": "1578 EASTERN PARKWAY", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-10-07", "lat": 40.6711, "lng": -73.9161}, {"id": 24344419, "b": "BROOKLYN", "a": "423 MARION STREET", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2012-11-05", "lat": 40.6816, "lng": -73.9123}, {"id": 24097423, "b": "BROOKLYN", "a": "MENAHAN STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2012-09-26", "lat": 40.7018, "lng": -73.9135}, {"id": 27861535, "b": "BROOKLYN", "a": "27 CORNELIA STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-04-16", "lat": 40.6881, "lng": -73.9176}, {"id": 35827736, "b": "BROOKLYN", "a": "101 NORMAN AVENUE", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2017-03-30", "lat": 40.7256, "lng": -73.9512}, {"id": 32594594, "b": "BROOKLYN", "a": "464 EASTERN PARKWAY", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-02-03", "lat": 40.67, "lng": -73.9529}, {"id": 28887733, "b": "BROOKLYN", "a": "678 GLENMORE AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2014-09-15", "lat": 40.6748, "lng": -73.8852}, {"id": 24567530, "b": "BROOKLYN", "a": "66 LIVINGSTON STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-12-11", "lat": 40.6918, "lng": -73.992}, {"id": 38859171, "b": "BROOKLYN", "a": "835 CLARKSON AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2018-04-04", "lat": 40.6566, "lng": -73.9306}, {"id": 20528985, "b": "BROOKLYN", "a": "120 BLAKE AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-05-29", "lat": 40.6648, "lng": -73.9155}, {"id": 31426544, "b": "BROOKLYN", "a": "566 7 AVENUE", "t": "Vacant Building", "s": "Pending", "d": "2015-08-30", "lat": 40.6595, "lng": -73.9882}, {"id": 29142624, "b": "BROOKLYN", "a": "82 NORTH HENRY STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2014-10-24", "lat": 40.7223, "lng": -73.9427}, {"id": 37231432, "b": "BROOKLYN", "a": "375 COURT ST", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-09-20", "lat": 40.6811, "lng": -73.9955}, {"id": 23213044, "b": "BROOKLYN", "a": "NORTH HENRY STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2012-05-11", "lat": 40.7225, "lng": -73.943}, {"id": 35897048, "b": "BROOKLYN", "a": "1574 UNION STREET", "t": "3+ Family Mixed Use Building", "s": "Assigned", "d": "2017-04-08", "lat": 40.6682, "lng": -73.9373}, {"id": 36060259, "b": "BROOKLYN", "a": "SHORE ROAD", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-04-29", "lat": 40.6208, "lng": -74.0405}, {"id": 30596636, "b": "BROOKLYN", "a": "1669 SHEEPSHEAD BAY ROAD", "t": "Commercial Building", "s": "Closed", "d": "2015-05-11", "lat": 40.5864, "lng": -73.9522}, {"id": 20767671, "b": "BROOKLYN", "a": "888 LAFAYETTE AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-07-05", "lat": 40.6915, "lng": -73.9374}, {"id": 32414769, "b": "BROOKLYN", "a": "1225 EASTERN PARKWAY", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2016-01-14", "lat": 40.6686, "lng": -73.9276}, {"id": 36388005, "b": "BROOKLYN", "a": "8 COOK STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-06-08", "lat": 40.7022, "lng": -73.9436}, {"id": 21426364, "b": "BROOKLYN", "a": "735 GATES AVENUE", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2011-09-13", "lat": 40.6878, "lng": -73.9372}, {"id": 38899133, "b": "BROOKLYN", "a": "410 EASTERN PARKWAY", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2018-04-09", "lat": 40.6701, "lng": -73.9548}, {"id": 16867626, "b": "BROOKLYN", "a": "224 LEXINGTON AVENUE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2010-06-15", "lat": 40.6875, "lng": -73.9528}, {"id": 36993026, "b": "BROOKLYN", "a": "108 MARION STREET", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2017-08-20", "lat": 40.68, "lng": -73.9267}, {"id": 21700103, "b": "BROOKLYN", "a": "720 BELMONT AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-10-20", "lat": 40.6724, "lng": -73.8832}, {"id": 25401637, "b": "BROOKLYN", "a": "78 COMMERCE STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-04-21", "lat": 40.6808, "lng": -74.0081}, {"id": 29924733, "b": "BROOKLYN", "a": "80 MESEROLE AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2015-02-12", "lat": 40.7264, "lng": -73.9539}, {"id": 30177445, "b": "BROOKLYN", "a": "352 LAFAYETTE AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2015-03-14", "lat": 40.6887, "lng": -73.9614}, {"id": 32968756, "b": "BROOKLYN", "a": "183 MONROE STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-03-23", "lat": 40.6854, "lng": -73.9517}, {"id": 32396300, "b": "BROOKLYN", "a": "391 CLASSON AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2016-01-12", "lat": 40.6877, "lng": -73.9597}, {"id": 33577938, "b": "BROOKLYN", "a": "1085 DEKALB AVENUE", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-06-12", "lat": 40.6938, "lng": -73.9322}, {"id": 21388553, "b": "BROOKLYN", "a": "949 GREENE AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-09-08", "lat": 40.6909, "lng": -73.9293}, {"id": 22261176, "b": "BROOKLYN", "a": "286 SOUTH 2 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2011-12-05", "lat": 40.7112, "lng": -73.9565}, {"id": 33941117, "b": "BROOKLYN", "a": "522 JAMAICA AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2016-07-27", "lat": 40.6845, "lng": -73.8841}, {"id": 39339922, "b": "BROOKLYN", "a": "520 HENRY STREET", "t": "Commercial Building", "s": "Pending", "d": "2018-05-31", "lat": 40.6834, "lng": -74.0}, {"id": 27725928, "b": "BROOKLYN", "a": "1903 AVENUE U", "t": "Commercial Building", "s": "Closed", "d": "2014-03-26", "lat": 40.5993, "lng": -73.9524}, {"id": 33621437, "b": "BROOKLYN", "a": "AINSLIE STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2016-06-17", "lat": 40.7132, "lng": -73.9433}, {"id": 34736841, "b": "BROOKLYN", "a": "510 DRIGGS AVENUE", "t": "Vacant Lot", "s": "Assigned", "d": "2016-11-08", "lat": 40.718, "lng": -73.9554}, {"id": 32981705, "b": "BROOKLYN", "a": "1796 ATLANTIC AVENUE", "t": "Parking Lot/Garage", "s": "Closed", "d": "2016-03-24", "lat": 40.6774, "lng": -73.9306}, {"id": 28298447, "b": "BROOKLYN", "a": "657 KNICKERBOCKER AVENUE", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2014-06-19", "lat": 40.6952, "lng": -73.9121}, {"id": 24048653, "b": "BROOKLYN", "a": "1011 RUTLAND ROAD", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-09-18", "lat": 40.6629, "lng": -73.926}, {"id": 35392037, "b": "BROOKLYN", "a": "20 GUNTHER PLACE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-02-01", "lat": 40.677, "lng": -73.9118}, {"id": 33053529, "b": "BROOKLYN", "a": "149 EAST 96TH STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-04-04", "lat": 40.6628, "lng": -73.923}, {"id": 37964686, "b": "BROOKLYN", "a": "275 ALBANY AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-12-18", "lat": 40.6713, "lng": -73.9392}, {"id": 33435872, "b": "BROOKLYN", "a": "250 CROWN STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-05-25", "lat": 40.6663, "lng": -73.952}, {"id": 27815778, "b": "BROOKLYN", "a": "253 STANHOPE STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2014-04-09", "lat": 40.7012, "lng": -73.92}, {"id": 36135479, "b": "BROOKLYN", "a": "1328 DEAN STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-05-08", "lat": 40.6766, "lng": -73.9451}, {"id": 18732525, "b": "BROOKLYN", "a": "541 WYTHE AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2010-09-21", "lat": 40.7054, "lng": -73.9667}, {"id": 33569080, "b": "BROOKLYN", "a": "146 1/2 JAVA STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-06-10", "lat": 40.7314, "lng": -73.9551}, {"id": 22634038, "b": "BROOKLYN", "a": "82 ROCKAWAY PARKWAY", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-02-01", "lat": 40.6641, "lng": -73.9235}, {"id": 27125801, "b": "BROOKLYN", "a": "861 EAST 51 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-01-11", "lat": 40.6404, "lng": -73.9281}, {"id": 36678145, "b": "BROOKLYN", "a": "50 MONROE STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2017-07-12", "lat": 40.6847, "lng": -73.9574}, {"id": 35601938, "b": "BROOKLYN", "a": "9 COOK STREET", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2017-03-01", "lat": 40.7022, "lng": -73.9436}, {"id": 21689035, "b": "BROOKLYN", "a": "931 EAST 88 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-10-19", "lat": 40.6386, "lng": -73.9067}, {"id": 33589719, "b": "BROOKLYN", "a": "475 JEFFERSON AVENUE", "t": "1-2 Family Dwelling", "s": "Assigned", "d": "2016-06-13", "lat": 40.6847, "lng": -73.9391}, {"id": 21659450, "b": "BROOKLYN", "a": "8411 FORT HAMILTON PARKWA", "t": "Vacant Lot", "s": "Closed", "d": "2011-10-14", "lat": 40.6213, "lng": -74.0231}, {"id": 22424627, "b": "BROOKLYN", "a": "85 ST MARKS PLACE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-12-30", "lat": 40.6815, "lng": -73.9792}, {"id": 24781217, "b": "BROOKLYN", "a": "321 CORNELIA STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2013-01-14", "lat": 40.6954, "lng": -73.9104}, {"id": 37112471, "b": "BROOKLYN", "a": "1921 AVENUE K", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-09-06", "lat": 40.6233, "lng": -73.9568}, {"id": 32962543, "b": "BROOKLYN", "a": "335 LEFFERTS AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-03-22", "lat": 40.6624, "lng": -73.9503}, {"id": 30384612, "b": "MANHATTAN", "a": "2010 LEXINGTON AVENUE", "t": "Commercial Building", "s": "Pending", "d": "2015-04-12", "lat": 40.8027, "lng": -73.9387}, {"id": 38798623, "b": "MANHATTAN", "a": "205 WEST  107 STREET", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2018-03-27", "lat": 40.8013, "lng": -73.9656}, {"id": 37524833, "b": "MANHATTAN", "a": "505 WEST  162 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-10-26", "lat": 40.8363, "lng": -73.9404}, {"id": 18686900, "b": "MANHATTAN", "a": "120 WEST 71 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2010-09-15", "lat": 40.7771, "lng": -73.9801}, {"id": 37248052, "b": "MANHATTAN", "a": "534 WEST 50TH STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2017-09-22", "lat": 40.7651, "lng": -73.9935}, {"id": 34133250, "b": "MANHATTAN", "a": "1 PENNSYLVANIA PLAZA", "t": "Commercial Building", "s": "Closed", "d": "2016-08-20", "lat": 40.7512, "lng": -73.9925}, {"id": 16444260, "b": "MANHATTAN", "a": "25 WEST 17 STREET", "t": "School/Pre-School", "s": "Pending", "d": "2010-04-14", "lat": 40.7384, "lng": -73.9933}, {"id": 32970742, "b": "MANHATTAN", "a": "7 ST JAMES PLACE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-03-23", "lat": 40.7111, "lng": -74.0004}, {"id": 28998072, "b": "MANHATTAN", "a": "106 WEST 143 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-10-02", "lat": 40.8193, "lng": -73.9377}, {"id": 25213727, "b": "MANHATTAN", "a": "211 EAST 66 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-03-19", "lat": 40.7656, "lng": -73.9627}, {"id": 28880369, "b": "MANHATTAN", "a": "4455 BROADWAY", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2014-09-15", "lat": 40.8572, "lng": -73.9324}, {"id": 28452366, "b": "MANHATTAN", "a": "3041 BROADWAY", "t": "Commercial Building", "s": "Pending", "d": "2014-07-11", "lat": 40.8108, "lng": -73.9619}, {"id": 30275440, "b": "MANHATTAN", "a": "205 WEST  103 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2015-03-27", "lat": 40.7986, "lng": -73.9674}, {"id": 18607414, "b": "MANHATTAN", "a": "155 WEST 20 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2010-09-02", "lat": 40.7417, "lng": -73.9957}, {"id": 32593929, "b": "MANHATTAN", "a": "610 WEST  145 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-02-03", "lat": 40.8266, "lng": -73.9509}, {"id": 35212471, "b": "MANHATTAN", "a": "104 BAYARD STREET", "t": "3+ Family Mixed Use Building", "s": "Pending", "d": "2017-01-10", "lat": 40.7161, "lng": -73.9998}, {"id": 24443992, "b": "MANHATTAN", "a": "229 WEST 109 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-11-20", "lat": 40.8028, "lng": -73.9653}, {"id": 31177944, "b": "MANHATTAN", "a": "20 LAUREL HILL TERRACE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2015-07-27", "lat": 40.8487, "lng": -73.9294}, {"id": 25867912, "b": "MANHATTAN", "a": "53 BEACH STREET", "t": "Commercial Building", "s": "Closed", "d": "2013-07-03", "lat": 40.7207, "lng": -74.0094}, {"id": 21901490, "b": "MANHATTAN", "a": "500 WEST 174 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-11-16", "lat": 40.8437, "lng": -73.9344}, {"id": 20774477, "b": "MANHATTAN", "a": "408 WEST 130 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-07-06", "lat": 40.8144, "lng": -73.9515}, {"id": 32899044, "b": "MANHATTAN", "a": "23 WEST  120 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-03-14", "lat": 40.8041, "lng": -73.9466}, {"id": 25847464, "b": "MANHATTAN", "a": "138 WEST 112 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-06-30", "lat": 40.8001, "lng": -73.9531}, {"id": 27184182, "b": "MANHATTAN", "a": "631 WEST 207 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2014-01-18", "lat": 40.8682, "lng": -73.9215}, {"id": 32363201, "b": "MANHATTAN", "a": "440 WEST   47 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-01-07", "lat": 40.7621, "lng": -73.9916}, {"id": 31525170, "b": "MANHATTAN", "a": "3333A BROADWAY", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2015-09-13", "lat": 40.8199, "lng": -73.9552}, {"id": 29638653, "b": "MANHATTAN", "a": "455 WEST   47 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2015-01-05", "lat": 40.7623, "lng": -73.9918}, {"id": 20535398, "b": "MANHATTAN", "a": "335 WEST 29 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-05-31", "lat": 40.7495, "lng": -73.9969}, {"id": 28284939, "b": "MANHATTAN", "a": "57 EAST 130 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-06-18", "lat": 40.8087, "lng": -73.9378}, {"id": 33374326, "b": "MANHATTAN", "a": "424 WEST END AVENUE", "t": "Catch Basin/Sewer", "s": "Closed", "d": "2016-05-17", "lat": 40.7853, "lng": -73.9805}, {"id": 31531248, "b": "MANHATTAN", "a": "16 WEST   82 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2015-09-15", "lat": 40.783, "lng": -73.9719}, {"id": 33258380, "b": "MANHATTAN", "a": "501 WEST  214 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-05-02", "lat": 40.869, "lng": -73.9158}, {"id": 33491340, "b": "MANHATTAN", "a": "2 EAST  125 STREET", "t": "3+ Family Mixed Use Building", "s": "Assigned", "d": "2016-06-01", "lat": 40.8063, "lng": -73.942}, {"id": 32153646, "b": "MANHATTAN", "a": "1845 ADAM CLAYTON POWELL BOULEVARD", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2015-12-07", "lat": 40.8009, "lng": -73.9542}, {"id": 39183091, "b": "MANHATTAN", "a": "340 WEST 40TH STREET", "t": "Commercial Building", "s": "Closed", "d": "2018-05-14", "lat": 40.7565, "lng": -73.9927}, {"id": 24766847, "b": "MANHATTAN", "a": "95 THOMPSON STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2013-01-11", "lat": 40.7253, "lng": -74.0023}, {"id": 25850837, "b": "MANHATTAN", "a": "501 WEST 173 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-07-01", "lat": 40.8431, "lng": -73.9349}, {"id": 28737931, "b": "MANHATTAN", "a": "314 EAST 106 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-08-22", "lat": 40.7903, "lng": -73.9416}, {"id": 25679152, "b": "MANHATTAN", "a": "119 WEST 124 STREET", "t": "Vacant Lot", "s": "Closed", "d": "2013-06-06", "lat": 40.8075, "lng": -73.9468}, {"id": 32550768, "b": "MANHATTAN", "a": "178 EAST 7TH STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-01-28", "lat": 40.725, "lng": -73.9817}, {"id": 34398261, "b": "MANHATTAN", "a": "VERDI SQUARE", "t": "Other (Explain Below)", "s": "Closed", "d": "2016-09-24", "lat": 40.7786, "lng": -73.9816}, {"id": 28654871, "b": "MANHATTAN", "a": "468 WEST 47 STREET", "t": "3+ Family Mixed Use Building", "s": "Closed", "d": "2014-08-10", "lat": 40.7624, "lng": -73.9921}, {"id": 26029229, "b": "MANHATTAN", "a": "136 WEST 112 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-07-25", "lat": 40.8001, "lng": -73.9531}, {"id": 21129679, "b": "MANHATTAN", "a": "1352 ST NICHOLAS AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2011-08-30", "lat": 40.8471, "lng": -73.9353}, {"id": 23781190, "b": "MANHATTAN", "a": "245 WEST 109 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-08-10", "lat": 40.8029, "lng": -73.9656}, {"id": 18965538, "b": "MANHATTAN", "a": "2726 8 AVENUE", "t": "Vacant Building", "s": "Closed", "d": "2010-10-24", "lat": 40.8227, "lng": -73.942}, {"id": 34080665, "b": "MANHATTAN", "a": "321 EAST   79 STREET", "t": "3+ Family Mixed Use Building", "s": "Assigned", "d": "2016-08-13", "lat": 40.7731, "lng": -73.9544}, {"id": 39373211, "b": "MANHATTAN", "a": "79 WARREN STREET", "t": "Construction Site", "s": "Closed", "d": "2018-06-04", "lat": 40.7151, "lng": -74.0104}, {"id": 33990468, "b": "MANHATTAN", "a": "114 EAST 91ST STREET", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2016-08-02", "lat": 40.7828, "lng": -73.9542}, {"id": 36446090, "b": "MANHATTAN", "a": "196 WEST  108 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-06-14", "lat": 40.8017, "lng": -73.9646}, {"id": 33791404, "b": "MANHATTAN", "a": "442 WEST  160 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2016-07-08", "lat": 40.8345, "lng": -73.9402}, {"id": 33688201, "b": "MANHATTAN", "a": "71 POST AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-06-25", "lat": 40.8638, "lng": -73.9221}, {"id": 32559453, "b": "MANHATTAN", "a": "1370 5 AVENUE", "t": "3+ Family Apt. Building", "s": "Assigned", "d": "2016-01-29", "lat": 40.7989, "lng": -73.9477}, {"id": 36826163, "b": "MANHATTAN", "a": "EAST 7 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-07-30", "lat": 40.7236, "lng": -73.9777}, {"id": 16770431, "b": "MANHATTAN", "a": "178 WEST 82 STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2010-06-01", "lat": 40.7847, "lng": -73.9761}, {"id": 31710695, "b": "MANHATTAN", "a": "2155 ADAM CLAYTON POWELL BOULEVARD", "t": "Vacant Lot", "s": "Closed", "d": "2015-10-08", "lat": 40.8109, "lng": -73.9469}, {"id": 37632437, "b": "MANHATTAN", "a": "WEST 15 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-11-07", "lat": 40.7398, "lng": -74.0006}, {"id": 31856640, "b": "MANHATTAN", "a": "EAST 118 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2015-10-24", "lat": 40.7996, "lng": -73.9399}, {"id": 33700368, "b": "MANHATTAN", "a": "1975 MADISON AVENUE", "t": "Other (Explain Below)", "s": "Pending", "d": "2016-06-27", "lat": 40.8065, "lng": -73.9396}, {"id": 22959957, "b": "MANHATTAN", "a": "269 EAST 4 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2012-03-27", "lat": 40.7229, "lng": -73.9816}, {"id": 34444030, "b": "QUEENS", "a": "10-06 NEILSON STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-10-01", "lat": 40.6036, "lng": -73.7474}, {"id": 27784339, "b": "QUEENS", "a": "256 BEACH 132 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2014-04-04", "lat": 40.5764, "lng": -73.8512}, {"id": 24304529, "b": "QUEENS", "a": "73-33 53 ROAD", "t": "Construction Site", "s": "Closed", "d": "2012-11-01", "lat": 40.7305, "lng": -73.8893}, {"id": 20528537, "b": "QUEENS", "a": "1715 PALMETTO STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2011-05-29", "lat": 40.7021, "lng": -73.9085}, {"id": 21415879, "b": "QUEENS", "a": "118-32 FRANCIS LEWIS BOULEVARD", "t": "Vacant Building", "s": "Closed", "d": "2011-09-12", "lat": 40.6944, "lng": -73.7454}, {"id": 37490326, "b": "QUEENS", "a": "29-10 BROOKHAVEN AVENUE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-10-21", "lat": 40.5982, "lng": -73.7627}, {"id": 26420078, "b": "QUEENS", "a": "245 BEACH 117 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2013-10-02", "lat": 40.5803, "lng": -73.8386}, {"id": 25557472, "b": "QUEENS", "a": "33-35 76 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2013-05-17", "lat": 40.7543, "lng": -73.8908}, {"id": 39304177, "b": "QUEENS", "a": "57-10 ROOSEVELT AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2018-05-28", "lat": 40.7451, "lng": -73.9071}, {"id": 33930482, "b": "QUEENS", "a": "62-11 ELIOT AVENUE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2016-07-25", "lat": 40.7153, "lng": -73.8998}, {"id": 16650081, "b": "QUEENS", "a": "115-12 203 STREET", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2010-05-13", "lat": 40.6984, "lng": -73.7509}, {"id": 23396109, "b": "QUEENS", "a": "250-10 GRAND CENTRAL PARKWAY", "t": "Parking Lot/Garage", "s": "Closed", "d": "2012-06-11", "lat": 40.7528, "lng": -73.7239}, {"id": 23605118, "b": "QUEENS", "a": "28-14 47 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2012-07-12", "lat": 40.7624, "lng": -73.9085}, {"id": 33980248, "b": "QUEENS", "a": "80-20 138 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-08-01", "lat": 40.7159, "lng": -73.8215}, {"id": 31147721, "b": "QUEENS", "a": "25-22 34 AVENUE", "t": "Commercial Building", "s": "Closed", "d": "2015-07-23", "lat": 40.7611, "lng": -73.9304}, {"id": 23716816, "b": "QUEENS", "a": "61-38 232 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-07-31", "lat": 40.7508, "lng": -73.7464}, {"id": 23098831, "b": "QUEENS", "a": "115-51 201 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-04-21", "lat": 40.6972, "lng": -73.7524}, {"id": 34340588, "b": "QUEENS", "a": "90-34 CORONA AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2016-09-16", "lat": 40.7419, "lng": -73.8742}, {"id": 27595355, "b": "QUEENS", "a": "34-27 107 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2014-03-08", "lat": 40.7554, "lng": -73.8615}, {"id": 36189692, "b": "QUEENS", "a": "169-08 19 AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-05-15", "lat": 40.7804, "lng": -73.7945}, {"id": 23328369, "b": "QUEENS", "a": "10-12 GIPSON STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-05-30", "lat": 40.6028, "lng": -73.7594}, {"id": 18420332, "b": "QUEENS", "a": "64-15 84 STREET", "t": "Parking Lot/Garage", "s": "Closed", "d": "2010-08-05", "lat": 40.7212, "lng": -73.8695}, {"id": 21537969, "b": "QUEENS", "a": "157-42 19 AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2011-09-28", "lat": 40.7812, "lng": -73.8044}, {"id": 30358672, "b": "QUEENS", "a": "38-03 28 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2015-04-08", "lat": 40.7548, "lng": -73.9345}, {"id": 30509559, "b": "QUEENS", "a": "37-15 55 STREET", "t": "Commercial Building", "s": "Closed", "d": "2015-04-29", "lat": 40.7506, "lng": -73.9071}, {"id": 34150020, "b": "QUEENS", "a": "54 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2016-08-22", "lat": 40.7174, "lng": -73.9145}, {"id": 18873268, "b": "QUEENS", "a": "160-26 131 AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2010-10-12", "lat": 40.6747, "lng": -73.7792}, {"id": 31420962, "b": "QUEENS", "a": "73 STREET", "t": "Other (Explain Below)", "s": "Assigned", "d": "2015-08-29", "lat": 40.748, "lng": -73.8926}, {"id": 26220761, "b": "QUEENS", "a": "45-14 JUNCTION BOULEVARD", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2013-08-29", "lat": 40.7445, "lng": -73.8678}, {"id": 29071762, "b": "QUEENS", "a": "43-60 DOUGLASTON PARKWAY", "t": "Other (Explain Below)", "s": "Closed", "d": "2014-10-14", "lat": 40.7668, "lng": -73.7461}, {"id": 26164854, "b": "QUEENS", "a": "104-28 191 STREET", "t": "Vacant Lot", "s": "Closed", "d": "2013-08-20", "lat": 40.7064, "lng": -73.7665}, {"id": 26322120, "b": "QUEENS", "a": "115-54 194 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-09-16", "lat": 40.695, "lng": -73.7589}, {"id": 25725975, "b": "QUEENS", "a": "111-47 145 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-06-12", "lat": 40.6865, "lng": -73.7998}, {"id": 24921234, "b": "QUEENS", "a": "80-87 88 AVENUE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2013-02-01", "lat": 40.6901, "lng": -73.8611}, {"id": 39352715, "b": "QUEENS", "a": "97-42 104 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2018-06-02", "lat": 40.6876, "lng": -73.8398}, {"id": 20897742, "b": "QUEENS", "a": "165-14 JEWEL AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-07-24", "lat": 40.7316, "lng": -73.8038}, {"id": 30399708, "b": "QUEENS", "a": "72-05 ASTORIA BOULEVARD", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2015-04-14", "lat": 40.767, "lng": -73.8968}, {"id": 25157743, "b": "QUEENS", "a": "111 AVENUE", "t": "Vacant Lot", "s": "Closed", "d": "2013-03-11", "lat": 40.6832, "lng": -73.812}, {"id": 18460764, "b": "QUEENS", "a": "41-51 74 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2010-08-11", "lat": 40.7442, "lng": -73.8909}, {"id": 26203054, "b": "QUEENS", "a": "95-07 63 DRIVE", "t": "Commercial Building", "s": "Closed", "d": "2013-08-27", "lat": 40.7294, "lng": -73.8628}, {"id": 32737441, "b": "QUEENS", "a": "90-36 149 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2016-02-21", "lat": 40.7026, "lng": -73.8059}, {"id": 20459867, "b": "QUEENS", "a": "28-41 38 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-05-18", "lat": 40.7656, "lng": -73.9147}, {"id": 20050341, "b": "QUEENS", "a": "160-29 12 AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-03-17", "lat": 40.7911, "lng": -73.8015}, {"id": 25823117, "b": "QUEENS", "a": "43-15 QUEENS STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2013-06-26", "lat": 40.7471, "lng": -73.9391}, {"id": 35092483, "b": "QUEENS", "a": "1600-1650 WOODBINE STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2016-12-23", "lat": 40.7, "lng": -73.9093}, {"id": 21768489, "b": "QUEENS", "a": "164-51 109 AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-10-29", "lat": 40.6958, "lng": -73.7882}, {"id": 29626626, "b": "QUEENS", "a": "65-39 BAYFIELD AVENUE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2015-01-03", "lat": 40.5991, "lng": -73.796}, {"id": 25629327, "b": "QUEENS", "a": "46-40 204 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-05-29", "lat": 40.7548, "lng": -73.7776}, {"id": 27515075, "b": "QUEENS", "a": "67-70 YELLOWSTONE BOULEVARD", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2014-02-25", "lat": 40.7267, "lng": -73.8487}, {"id": 28777555, "b": "QUEENS", "a": "157-41 CROSS BAY BOULEVARD", "t": "Commercial Building", "s": "Pending", "d": "2014-08-29", "lat": 40.6618, "lng": -73.8405}, {"id": 26168853, "b": "QUEENS", "a": "149-35 88 STREET", "t": "Other (Explain Below)", "s": "Closed", "d": "2013-08-21", "lat": 40.6697, "lng": -73.8473}, {"id": 37057277, "b": "QUEENS", "a": "59-36 MAURICE AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2017-08-29", "lat": 40.727, "lng": -73.9076}, {"id": 32947113, "b": "QUEENS", "a": "35-54 73 STREET", "t": "Other (Explain Below)", "s": "Pending", "d": "2016-03-20", "lat": 40.7505, "lng": -73.893}, {"id": 24443021, "b": "QUEENS", "a": "10 WEST 16 ROAD", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-11-20", "lat": 40.6017, "lng": -73.821}, {"id": 23398152, "b": "QUEENS", "a": "51-31 48 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-06-11", "lat": 40.7344, "lng": -73.9186}, {"id": 23184629, "b": "QUEENS", "a": "93-09 103 AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-05-07", "lat": 40.6819, "lng": -73.8465}, {"id": 28976979, "b": "QUEENS", "a": "25-33 120 STREET", "t": "Vacant Lot", "s": "Closed", "d": "2014-09-29", "lat": 40.7765, "lng": -73.848}, {"id": 25433477, "b": "QUEENS", "a": "1668 JEFFERSON AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-04-26", "lat": 40.6989, "lng": -73.9062}, {"id": 20633568, "b": "QUEENS", "a": "40-05 189 STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-06-14", "lat": 40.7606, "lng": -73.7925}, {"id": 18795859, "b": "QUEENS", "a": "536 BEACH 22 STREET", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2010-09-30", "lat": 40.6008, "lng": -73.7556}, {"id": 16876511, "b": "STATEN ISLAND", "a": "1430 RICHMOND AVENUE", "t": "Commercial Building", "s": "Pending", "d": "2010-06-16", "lat": 40.6134, "lng": -74.1584}, {"id": 15890248, "b": "STATEN ISLAND", "a": "179 KISWICK STREET", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2010-01-30", "lat": 40.5747, "lng": -74.0957}, {"id": 25826881, "b": "STATEN ISLAND", "a": "RICHMOND ROAD", "t": "Vacant Lot", "s": "Closed", "d": "2013-06-26", "lat": 40.5824, "lng": -74.1098}, {"id": 36923956, "b": "STATEN ISLAND", "a": "29 AINSWORTH AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-08-11", "lat": 40.5535, "lng": -74.1398}, {"id": 39467519, "b": "STATEN ISLAND", "a": "764 KATAN AVENUE", "t": "1-2 Family Dwelling", "s": "Assigned", "d": "2018-06-14", "lat": 40.5499, "lng": -74.1729}, {"id": 28986659, "b": "STATEN ISLAND", "a": "30 BARRETT AVENUE", "t": "Commercial Building", "s": "Pending", "d": "2014-10-01", "lat": 40.6258, "lng": -74.1366}, {"id": 18484402, "b": "STATEN ISLAND", "a": "18 HILLCREST AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2010-08-14", "lat": 40.5464, "lng": -74.1521}, {"id": 16399769, "b": "STATEN ISLAND", "a": "242 TALBOT PLACE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2010-04-08", "lat": 40.6199, "lng": -74.0747}, {"id": 18764429, "b": "STATEN ISLAND", "a": "132 PLEASANT PLAINS AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2010-09-25", "lat": 40.5236, "lng": -74.2208}, {"id": 30763413, "b": "STATEN ISLAND", "a": "545 WATCHOGUE ROAD", "t": "Other (Explain Below)", "s": "Closed", "d": "2015-06-03", "lat": 40.6173, "lng": -74.1494}, {"id": 30498358, "b": "STATEN ISLAND", "a": "6 MAPLE TERRACE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2015-04-28", "lat": 40.5638, "lng": -74.1007}, {"id": 17606239, "b": "STATEN ISLAND", "a": "CAMBRIDGE AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2010-07-08", "lat": 40.6165, "lng": -74.1491}, {"id": 23124768, "b": "STATEN ISLAND", "a": "62 BELMONT PLACE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-04-26", "lat": 40.6435, "lng": -74.0803}, {"id": 20710848, "b": "STATEN ISLAND", "a": "62 NEWBERRY AVENUE", "t": "1-2 Family Mixed Use Building", "s": "Closed", "d": "2011-06-25", "lat": 40.5949, "lng": -74.0938}, {"id": 35676128, "b": "STATEN ISLAND", "a": "185 TRANTOR PLACE", "t": "3+ Family Apt. Building", "s": "Closed", "d": "2017-03-11", "lat": 40.6292, "lng": -74.1444}, {"id": 38607758, "b": "STATEN ISLAND", "a": "68 UPTON STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2018-03-04", "lat": 40.6002, "lng": -74.0966}, {"id": 39260144, "b": "STATEN ISLAND", "a": "89 JEANETTE AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2018-05-22", "lat": 40.5425, "lng": -74.1742}, {"id": 25275346, "b": "STATEN ISLAND", "a": "217 STANLEY AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-03-29", "lat": 40.6344, "lng": -74.0926}, {"id": 21052969, "b": "STATEN ISLAND", "a": "58 WEST CEDARVIEW AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-08-17", "lat": 40.5666, "lng": -74.1357}, {"id": 26429797, "b": "STATEN ISLAND", "a": "112 KELVIN AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-10-03", "lat": 40.5541, "lng": -74.1339}, {"id": 16829810, "b": "STATEN ISLAND", "a": "85 THOMPSON STREET", "t": "3+ Family Apt. Building", "s": "Pending", "d": "2010-06-09", "lat": 40.6259, "lng": -74.0768}, {"id": 27646756, "b": "STATEN ISLAND", "a": "153 JOSEPH AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2014-03-16", "lat": 40.5994, "lng": -74.1369}, {"id": 33028843, "b": "STATEN ISLAND", "a": "5285 ARTHUR KILL ROAD", "t": "Other (Explain Below)", "s": "Closed", "d": "2016-03-31", "lat": 40.5148, "lng": -74.2456}, {"id": 28365341, "b": "STATEN ISLAND", "a": "210 MILTON AVENUE", "t": "Vacant Lot", "s": "Closed", "d": "2014-06-29", "lat": 40.5618, "lng": -74.1067}, {"id": 36410808, "b": "STATEN ISLAND", "a": "1825 FOREST AVENUE", "t": "Commercial Building", "s": "Closed", "d": "2017-06-10", "lat": 40.6252, "lng": -74.1496}, {"id": 28951219, "b": "STATEN ISLAND", "a": "96 AMSTERDAM AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2014-09-25", "lat": 40.6027, "lng": -74.1654}, {"id": 37705945, "b": "STATEN ISLAND", "a": "219 WARDWELL AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-11-15", "lat": 40.618, "lng": -74.1327}, {"id": 36723815, "b": "STATEN ISLAND", "a": "315 FOREST AVENUE", "t": "Day Care/Nursery", "s": "Closed", "d": "2017-07-17", "lat": 40.6314, "lng": -74.0993}, {"id": 26555762, "b": "STATEN ISLAND", "a": "204 ALTER AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-10-25", "lat": 40.5902, "lng": -74.0937}, {"id": 20821875, "b": "STATEN ISLAND", "a": "233 SWINNERTON STREET", "t": "Vacant Lot", "s": "Closed", "d": "2011-07-13", "lat": 40.503, "lng": -74.2458}, {"id": 29037264, "b": "STATEN ISLAND", "a": "450 SLOSSON AVENUE", "t": "Vacant Building", "s": "Closed", "d": "2014-10-08", "lat": 40.6091, "lng": -74.1165}, {"id": 39395294, "b": "STATEN ISLAND", "a": "KATAN AVENUE", "t": "Other (Explain Below)", "s": "Assigned", "d": "2018-06-07", "lat": 40.5498, "lng": -74.1734}, {"id": 36290402, "b": "STATEN ISLAND", "a": "21 CEDARWOOD COURT", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-05-27", "lat": 40.6252, "lng": -74.1654}, {"id": 18864912, "b": "STATEN ISLAND", "a": "106 EVERTON PLACE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2010-10-10", "lat": 40.5482, "lng": -74.1947}, {"id": 34158672, "b": "STATEN ISLAND", "a": "402 SIMONSON AVENUE", "t": "Vacant Lot", "s": "Closed", "d": "2016-08-23", "lat": 40.6267, "lng": -74.153}, {"id": 28852271, "b": "STATEN ISLAND", "a": "203 TARGEE STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2014-09-10", "lat": 40.6222, "lng": -74.084}, {"id": 31662698, "b": "STATEN ISLAND", "a": "43 MORRIS STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2015-10-02", "lat": 40.5537, "lng": -74.211}, {"id": 33332280, "b": "STATEN ISLAND", "a": "9 HEMPSTEAD AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2016-05-11", "lat": 40.5733, "lng": -74.0932}, {"id": 18351906, "b": "STATEN ISLAND", "a": "444 MANOR ROAD", "t": "Other (Explain Below)", "s": "Closed", "d": "2010-07-27", "lat": 40.6168, "lng": -74.1236}, {"id": 26274765, "b": "STATEN ISLAND", "a": "203 MELBA STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-09-07", "lat": 40.6067, "lng": -74.1249}, {"id": 34573655, "b": "STATEN ISLAND", "a": "51 KELVIN AVENUE", "t": "Other (Explain Below)", "s": "Closed", "d": "2016-10-19", "lat": 40.5555, "lng": -74.1356}, {"id": 38480624, "b": "STATEN ISLAND", "a": "36 STEERS STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2018-02-16", "lat": 40.5962, "lng": -74.1403}, {"id": 26179028, "b": "STATEN ISLAND", "a": "52 SEGUINE LOOP", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-08-22", "lat": 40.5201, "lng": -74.196}, {"id": 23643946, "b": "STATEN ISLAND", "a": "16 MAPLETON AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-07-18", "lat": 40.5745, "lng": -74.0928}, {"id": 26201433, "b": "STATEN ISLAND", "a": "4186 AMBOY ROAD", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-08-26", "lat": 40.5481, "lng": -74.1556}, {"id": 20695012, "b": "STATEN ISLAND", "a": "1083 RENSSELAER AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2011-06-23", "lat": 40.5368, "lng": -74.2108}, {"id": 39128084, "b": "STATEN ISLAND", "a": "16 CARO STREET", "t": "Commercial Building", "s": "Closed", "d": "2018-05-07", "lat": 40.6113, "lng": -74.137}, {"id": 37586474, "b": "STATEN ISLAND", "a": "145 JACKSON AVENUE", "t": "Vacant Building", "s": "Closed", "d": "2017-11-01", "lat": 40.5944, "lng": -74.0646}, {"id": 33772041, "b": "STATEN ISLAND", "a": "116 CLERMONT PLACE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2016-07-06", "lat": 40.6095, "lng": -74.128}, {"id": 24516128, "b": "STATEN ISLAND", "a": "74 SOUTH RAILROAD AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-12-01", "lat": 40.5936, "lng": -74.0891}, {"id": 26754732, "b": "STATEN ISLAND", "a": "341 HILLMAN AVENUE", "t": "1-2 Family Dwelling", "s": "Pending", "d": "2013-11-25", "lat": 40.6129, "lng": -74.1627}, {"id": 28760838, "b": "STATEN ISLAND", "a": "472 CLIFTON AVENUE", "t": "Vacant Lot", "s": "Closed", "d": "2014-08-26", "lat": 40.609, "lng": -74.0762}, {"id": 36772338, "b": "STATEN ISLAND", "a": "30 CRAFTON AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-07-23", "lat": 40.6103, "lng": -74.1421}, {"id": 23774662, "b": "STATEN ISLAND", "a": "112 PROSPECT STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-08-09", "lat": 40.629, "lng": -74.078}, {"id": 39477829, "b": "STATEN ISLAND", "a": "229 ROMA AVENUE", "t": "1-2 Family Dwelling", "s": "Assigned", "d": "2018-06-16", "lat": 40.5602, "lng": -74.1051}, {"id": 34797049, "b": "STATEN ISLAND", "a": "2025 RICHMOND AVENUE", "t": "Commercial Building", "s": "Closed", "d": "2016-11-16", "lat": 40.5983, "lng": -74.1625}, {"id": 36675542, "b": "STATEN ISLAND", "a": "344 VAN DUZER STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-07-11", "lat": 40.6297, "lng": -74.079}, {"id": 35989787, "b": "STATEN ISLAND", "a": "92 NORDEN STREET", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2017-04-20", "lat": 40.595, "lng": -74.1032}, {"id": 26078369, "b": "STATEN ISLAND", "a": "245 TITUS AVENUE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2013-08-06", "lat": 40.5628, "lng": -74.1103}, {"id": 23348421, "b": "STATEN ISLAND", "a": "36 HAVEN ESPLANADE", "t": "1-2 Family Dwelling", "s": "Closed", "d": "2012-06-02", "lat": 40.6323, "lng": -74.0928}], "months": ["Jan 2010", "Feb 2010", "Mar 2010", "Apr 2010", "May 2010", "Jun 2010", "Jul 2010", "Aug 2010", "Sep 2010", "Oct 2010", "Nov 2010", "Dec 2010", "Jan 2011", "Feb 2011", "Mar 2011", "Apr 2011", "May 2011", "Jun 2011", "Jul 2011", "Aug 2011", "Sep 2011", "Oct 2011", "Nov 2011", "Dec 2011", "Jan 2012", "Feb 2012", "Mar 2012", "Apr 2012", "May 2012", "Jun 2012", "Jul 2012", "Aug 2012", "Sep 2012", "Oct 2012", "Nov 2012", "Dec 2012", "Jan 2013", "Feb 2013", "Mar 2013", "Apr 2013", "May 2013", "Jun 2013", "Jul 2013", "Aug 2013", "Sep 2013", "Oct 2013", "Nov 2013", "Dec 2013", "Jan 2014", "Feb 2014", "Mar 2014", "Apr 2014", "May 2014", "Jun 2014", "Jul 2014", "Aug 2014", "Sep 2014", "Oct 2014", "Nov 2014", "Dec 2014", "Jan 2015", "Feb 2015", "Mar 2015", "Apr 2015", "May 2015", "Jun 2015", "Jul 2015", "Aug 2015", "Sep 2015", "Oct 2015", "Nov 2015", "Dec 2015", "Jan 2016", "Feb 2016", "Mar 2016", "Apr 2016", "May 2016", "Jun 2016", "Jul 2016", "Aug 2016", "Sep 2016", "Oct 2016", "Nov 2016", "Dec 2016", "Jan 2017", "Feb 2017", "Mar 2017", "Apr 2017", "May 2017", "Jun 2017", "Jul 2017", "Aug 2017", "Sep 2017", "Oct 2017", "Nov 2017", "Dec 2017", "Jan 2018", "Feb 2018", "Mar 2018", "Apr 2018", "May 2018", "Jun 2018", "Jul 2019", "Aug 2019", "Sep 2019", "Oct 2019", "Nov 2019", "Dec 2019", "Jan 2019", "Feb 2019", "Mar 2019", "Apr 2019", "May 2019", "Jun 2019"], "years": [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]};
+
+    // App State
+    let activeBorough = 'ALL';
+    let boroughChart = null;
+    let locationChart = null;
+    let trendChart = null;
+    let leafletMap = null;
+    let zipGroup = null;
+    let pinGroup = null;
+    let showZips = true;
+    let showPins = false;
+
+    // Tab Navigation
+    function activateTab(tabId, btn) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      btn.classList.add('active');
+
+      if (tabId === 'tab-map' && leafletMap) {
+        setTimeout(() => leafletMap.invalidateSize(), 200);
+      }
+    }
+
+    // Heatmap Color Interpolation
+    function getCellColor(val, maxVal) {
+      if (val === 0) return '#1e293b';
+      const ratio = Math.min(1, val / maxVal);
+      // Indigo gradient from #312e81 (dark) to #ef4444 (peak)
+      const r = Math.round(30 + ratio * 215);
+      const g = Math.round(45 + ratio * 45);
+      const b = Math.round(95 + ratio * 20);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    // Render Tab 2 Heatmap Grid
+    function renderHeatmapGrid(borough) {
+      const table = document.getElementById('heatmap-table');
+      const bData = APP_DATA.stats[borough];
+      const years = APP_DATA.years;
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      // Find max cell value for color scaling
+      let maxVal = 0;
+      months.forEach(m => {
+        bData.heatmap[m].forEach(v => { if (v > maxVal) maxVal = v; });
+      });
+      if (maxVal === 0) maxVal = 1;
+
+      let html = '<thead><tr><th>Month</th>';
+      years.forEach(yr => { html += `<th>${yr}</th>`; });
+      html += '</tr></thead><tbody>';
+
+      months.forEach(m => {
+        html += `<tr><td class="month-col">${m}</td>`;
+        bData.heatmap[m].forEach((val, idx) => {
+          const bg = getCellColor(val, maxVal);
+          const formatted = val > 0 ? val.toLocaleString() : '-';
+          html += `<td style="background:${bg}; color:#ffffff;" title="${m} ${years[idx]}: ${val.toLocaleString()} sightings">${formatted}</td>`;
+        });
+        html += '</tr>';
+      });
+
+      html += '</tbody>';
+      table.innerHTML = html;
+    }
+
+    // Render Charts and Stats
+    function updateDashboard(borough) {
+      activeBorough = borough;
+      const bData = APP_DATA.stats[borough];
+
+      // Update Tab 1 Stat Cards
+      document.getElementById('val-total').innerText = bData.total.toLocaleString();
+      document.getElementById('val-affected').innerText = bData.mostAffected;
+      document.getElementById('val-closed').innerText = bData.pctClosed + '%';
+      document.getElementById('val-resolution').innerText = bData.avgResDays + ' Days';
+      document.getElementById('trend-stats-badge').innerText = `Growth Rate: ${bData.slope >= 0 ? '+' : ''}${bData.slope} sightings/mo | Direction: ${bData.trendDirection}`;
+
+      // 1. Borough Comparison Bar Chart
+      const bLabels = ["Brooklyn", "Manhattan", "Bronx", "Queens", "Staten Island"];
+      const bCounts = bData.boroughCounts;
+      const bgColors = bLabels.map(name => {
+        if (borough === 'ALL') return '#4f46e5';
+        return name.toUpperCase() === borough ? '#818cf8' : '#334155';
+      });
+
+      const bCtx = document.getElementById('bar-borough-chart').getContext('2d');
+      if (boroughChart) boroughChart.destroy();
+      boroughChart = new Chart(bCtx, {
+        type: 'bar',
+        data: {
+          labels: bLabels,
+          datasets: [{
+            data: bCounts,
+            backgroundColor: bgColors,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+            y: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+          }
+        }
+      });
+
+      // 2. Incident Location Donut Chart
+      const lCtx = document.getElementById('donut-location-chart').getContext('2d');
+      if (locationChart) locationChart.destroy();
+      locationChart = new Chart(lCtx, {
+        type: 'doughnut',
+        data: {
+          labels: bData.locationBreakdown.map(l => l.label),
+          datasets: [{
+            data: bData.locationBreakdown.map(l => l.count),
+            backgroundColor: ['#6366f1', '#38bdf8', '#10b981', '#f59e0b', '#ec4899', '#64748b'],
+            borderWidth: 2,
+            borderColor: '#1e293b'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', labels: { color: '#cbd5e1', font: { size: 11.5 } } }
+          }
+        }
+      });
+
+      // 3. Tab 2 Monthly Trends & Linear Regression Forecast
+      const tCtx = document.getElementById('line-trend-chart').getContext('2d');
+      const monthlyActual = bData.monthlyCounts.slice();
+      // Pad forecast months with null so line only shows actuals up to Jun 2018
+      while (monthlyActual.length < APP_DATA.months.length) {
+        monthlyActual.push(null);
+      }
+
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(tCtx, {
+        type: 'line',
+        data: {
+          labels: APP_DATA.months,
+          datasets: [
+            {
+              label: 'Actual Monthly Sightings',
+              data: monthlyActual,
+              borderColor: '#38bdf8',
+              backgroundColor: 'rgba(56, 189, 248, 0.12)',
+              borderWidth: 2,
+              pointRadius: 1,
+              tension: 0.25,
+              fill: true
+            },
+            {
+              label: 'Linear Regression Trendline & Future Forecast',
+              data: bData.trendLine,
+              borderColor: '#f59e0b',
+              borderWidth: 2.5,
+              borderDash: [6, 6],
+              pointRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#cbd5e1' } }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#94a3b8', maxTicksLimit: 14 },
+              grid: { color: '#1e293b' }
+            },
+            y: {
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#1e293b' }
+            }
+          }
+        }
+      });
+
+      // Render Heatmap Grid
+      renderHeatmapGrid(borough);
+
+      // Refresh Map Markers
+      refreshMapLayers();
+    }
+
+    // Initialize Map with Esri Dark Gray Tiles
+    function initMap() {
+      leafletMap = L.map('map-container', {
+        center: [40.7128, -73.9850],
+        zoom: 11,
+        minZoom: 10,
+        maxZoom: 17
+      });
+
+      // Esri Dark Gray Basemap
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; National Geographic, DeLorme, NAVTEQ',
+        maxZoom: 16
+      }).addTo(leafletMap);
+
+      zipGroup = L.layerGroup().addTo(leafletMap);
+      pinGroup = L.layerGroup().addTo(leafletMap);
+
+      // Legend
+      const legend = L.control({ position: 'bottomright' });
+      legend.onAdd = function() {
+        const div = L.DomUtil.create('div', 'legend-box');
+        div.innerHTML = `
+          <strong>Rodent Sighting Density</strong>
+          <div class="legend-gradient"></div>
+          <div class="legend-labels">
+            <span>Low</span>
+            <span>Moderate</span>
+            <span>High</span>
+          </div>
+          <div style="font-size:10.5px; color:#94a3b8; margin-top:6px;">
+            &bull; Circles: Zip Totals<br/>
+            &bull; Pins: Individual 311 Cases
+          </div>
+        `;
+        return div;
+      };
+      legend.addTo(leafletMap);
+    }
+
+    // Refresh Map Layers
+    function refreshMapLayers() {
+      if (!leafletMap) return;
+      zipGroup.clearLayers();
+      pinGroup.clearLayers();
+
+      // Zip Code Circles
+      const filteredZips = APP_DATA.zips.filter(z => activeBorough === 'ALL' || z.b === activeBorough);
+      filteredZips.forEach(z => {
+        const radius = Math.max(7, Math.min(25, Math.sqrt(z.c) * 0.42));
+        const color = z.c > 2000 ? '#ef4444' : (z.c > 1200 ? '#f59e0b' : '#38bdf8');
+
+        const circle = L.circleMarker([z.lat, z.lng], {
+          radius: radius,
+          fillColor: color,
+          color: '#ffffff',
+          weight: 1,
+          opacity: 0.9,
+          fillOpacity: 0.65
+        });
+
+        circle.bindPopup(`
+          <div style="color:#0f172a; font-family:sans-serif;">
+            <strong style="font-size:14px;">Zip Code ${z.zip}</strong><br/>
+            <span>Borough: <strong>${z.b}</strong></span><br/>
+            <span>Sightings: <strong>${z.c.toLocaleString()}</strong></span>
+          </div>
+        `);
+        zipGroup.addLayer(circle);
+      });
+
+      // Sample Individual Pins
+      const filteredPins = APP_DATA.pins.filter(p => activeBorough === 'ALL' || p.b === activeBorough);
+      filteredPins.forEach(p => {
+        const marker = L.circleMarker([p.lat, p.lng], {
+          radius: 5.5,
+          fillColor: '#10b981',
+          color: '#ffffff',
+          weight: 1.5,
+          fillOpacity: 0.9
+        });
+
+        marker.bindPopup(`
+          <div style="color:#0f172a; font-family:sans-serif; min-width:180px;">
+            <strong style="font-size:13px; color:#1e293b;">Complaint #${p.id}</strong><hr style="margin:4px 0; border:0; border-top:1px solid #ddd;"/>
+            <b>Address:</b> ${p.a}<br/>
+            <b>Borough:</b> ${p.b}<br/>
+            <b>Date:</b> ${p.d}<br/>
+            <b>Location:</b> ${p.t}<br/>
+            <b>Status:</b> <span style="color:${p.s === 'Closed' ? '#10b981' : '#f59e0b'}; font-weight:700;">${p.s}</span>
+          </div>
+        `);
+        pinGroup.addLayer(marker);
+      });
+
+      if (!showZips) leafletMap.removeLayer(zipGroup);
+      else if (!leafletMap.hasLayer(zipGroup)) leafletMap.addLayer(zipGroup);
+
+      if (!showPins) leafletMap.removeLayer(pinGroup);
+      else if (!leafletMap.hasLayer(pinGroup)) leafletMap.addLayer(pinGroup);
+    }
+
+    function toggleLayer(type) {
+      if (type === 'zip') {
+        showZips = !showZips;
+        document.getElementById('btn-zip-toggle').classList.toggle('active', showZips);
+      } else if (type === 'pins') {
+        showPins = !showPins;
+        document.getElementById('btn-pins-toggle').classList.toggle('active', showPins);
+      }
+      refreshMapLayers();
+    }
+
+    // Startup
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      updateDashboard('ALL');
+
+      document.getElementById('borough-select').addEventListener('change', (e) => {
+        updateDashboard(e.target.value);
+      });
+    });
+  </script>
+</body>
+</html>
